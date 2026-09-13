@@ -2,6 +2,13 @@
   "name": "touchpress",
   "version": "0.2.1",
   "description": "End-to-end testing for mobile apps.",
+  "keywords": [
+    "android",
+    "automation",
+    "e2e",
+    "ios",
+    "testing"
+  ],
   "homepage": "https://github.com/wobsoriano/touchpress#readme",
   "bugs": {
     "url": "https://github.com/wobsoriano/touchpress/issues"
