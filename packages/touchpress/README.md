@@ -17,6 +17,12 @@ test('the right credentials land on the profile', async ({ device }) => {
   await expect(device.getByTestId('signing-in')).toBeVisible();
   await expect(device.getByTestId('profile-email')).toHaveText('rob@example.com', { exact: true });
 });
+
+test('open sign in with AI', async ({ device }) => {
+  test.setTimeout(180_000);
+  await device.act('Open the sign-in screen');
+  await expect(device.getByTestId('login')).toBeVisible();
+});
 ```
 
 ## Usage
