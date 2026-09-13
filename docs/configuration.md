@@ -58,8 +58,8 @@ A skipped test opens no session, because touchpress's `device` fixture is never 
 
 | key                 | default        | meaning                                                                                 |
 | ------------------- | -------------- | --------------------------------------------------------------------------------------- |
-| `platform`          | required       | `'ios'` or `'android'`                                                                  |
-| `app`               | required       | bundle id or package name, never a path to an artifact                                  |
+| `platform`          | required       | `'ios'`, `'android'`, or `'macos'`                                                      |
+| `app`               | required       | bundle id on iOS and macOS, package name on Android, never a path to an artifact        |
 | `readyWhen`         | required       | the locator that means the bundle loaded. `{ text }`, `{ testId }`, or `{ role, name }` |
 | `deviceName`        | first booted   | device name. An array is a pool indexed by Playwright's `parallelIndex`                 |
 | `launchUrl`         | none           | a deep link to launch the app with, on the launch and on every relaunch                 |
@@ -114,6 +114,31 @@ To run more than one worker, give `deviceName` an array with one entry per worke
 ```ts
 use: { platform: 'ios', deviceName: ['iPhone 17 Pro', 'iPhone 17 Pro Max'] }
 ```
+
+## macOS
+
+On macOS the device is the Mac running the tests, and it is always booted. `deviceName` is rarely needed, and `workers` must be 1 because there is only one Mac to claim.
+
+```ts
+use: { platform: 'macos', app: 'com.example.app', readyWhen: { text: 'Sign in' } }
+```
+
+XCUI adds close, full-screen, and minimize buttons to every macOS window. touchpress leaves them out of locators, so `getByRole('button')` matches only the app's own buttons. They still appear in `screen.txt` with test ids starting with `_XCUI:`.
+
+`clearState()` fails on macOS, because agent-device does not support clearing app state there. `goBack()` only works on a screen that shows its own back control.
+
+touchpress relaunches the app through LaunchServices, so the app does not inherit the test process's environment. An app that reads a key from its environment starts without it. Set the value in launchd's environment from a Playwright `globalSetup` file and remove it in the teardown that file returns.
+
+```ts
+import { execFileSync } from 'node:child_process';
+
+export default function globalSetup() {
+  execFileSync('launchctl', ['setenv', 'API_KEY', process.env.API_KEY ?? '']);
+  return () => execFileSync('launchctl', ['unsetenv', 'API_KEY']);
+}
+```
+
+`launchctl setenv` applies to every app launched in your login session, not only the app under test. A run that crashes before the teardown leaves the value set until you run `launchctl unsetenv API_KEY` or log out.
 
 ## Timeouts
 

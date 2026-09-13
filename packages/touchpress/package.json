@@ -1,12 +1,13 @@
 {
   "name": "touchpress",
   "version": "0.2.2",
-  "description": "End-to-end testing for mobile apps.",
+  "description": "End-to-end testing for mobile and macOS apps.",
   "keywords": [
     "android",
     "automation",
     "e2e",
     "ios",
+    "macos",
     "testing"
   ],
   "homepage": "https://github.com/wobsoriano/touchpress#readme",
