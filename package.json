@@ -14,7 +14,6 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
-    "agent-device": "0.20.10",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
