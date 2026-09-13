@@ -46,6 +46,11 @@ export type ScreenNode = {
    */
   readonly hiddenContentAbove: boolean;
   readonly hiddenContentBelow: boolean;
+  /**
+   * XCUI adds close, full-screen, and minimize buttons to every macOS window, so
+   * they are left out of matching or `getByRole('button')` could never be strict.
+   */
+  readonly windowChrome: boolean;
 };
 
 /**
@@ -191,6 +196,7 @@ export function parseScreen(raw: RawSnapshot, platform: Platform): Screen {
     const parent =
       source.parentIndex === undefined ? null : (byIndex.get(source.parentIndex) ?? null);
     const rawType = source.type ?? source.role ?? 'Other';
+    const testId = inherited(source.identifier, source.inheritsIdentifier, parent, (a) => a.testId);
     const node: ScreenNode = {
       ref: source.ref.startsWith('@') ? source.ref : `@${source.ref}`,
       index: source.index,
@@ -200,13 +206,14 @@ export function parseScreen(raw: RawSnapshot, platform: Platform): Screen {
       rawType,
       name: inherited(source.label, source.inheritsLabel, parent, (a) => a.name),
       value: parsedValue(source),
-      testId: inherited(source.identifier, source.inheritsIdentifier, parent, (a) => a.testId),
+      testId,
       rect: source.rect ?? null,
       enabled: source.enabled ?? true,
       selected: source.selected ?? false,
       focused: source.focused ?? false,
       hiddenContentAbove: source.hiddenContentAbove ?? false,
       hiddenContentBelow: source.hiddenContentBelow ?? false,
+      windowChrome: platform === 'macos' && testId !== null && testId.startsWith('_XCUI:'),
     };
     nodes.push(node);
     byIndex.set(node.index, node);
@@ -278,6 +285,7 @@ export function resolve(screen: Screen, query: Query): Resolution {
 export function matchesOf(screen: Screen, query: Query): readonly ScreenNode[] {
   const matched = screen.nodes.filter(
     (node) =>
+      !node.windowChrome &&
       matchesQuery(node, query) &&
       (query.filters ?? []).every((filter) => matchesFilter(screen, node, filter)),
   );
@@ -391,7 +399,13 @@ type Candidate = { readonly node: ScreenNode; readonly rect: Rect };
 export function touchTargetFor(screen: Screen, node: ScreenNode): ScreenNode | null {
   const candidates: Candidate[] = [];
   for (const other of screen.nodes) {
-    if (other === node || !other.enabled || !INTERACTIVE_ROLES.has(other.role)) continue;
+    if (
+      other === node ||
+      other.windowChrome ||
+      !other.enabled ||
+      !INTERACTIVE_ROLES.has(other.role)
+    )
+      continue;
     if (other.rect !== null) candidates.push({ node: other, rect: other.rect });
   }
   const inside = smallest(candidates.filter((candidate) => isDescendant(candidate.node, node)));
@@ -432,7 +446,9 @@ export function isDescendant(node: ScreenNode, ancestor: ScreenNode): boolean {
 /** The named nodes closest to what the query asked for. A miss is usually a wording drift. */
 function nearestTo(screen: Screen, query: Query): readonly ScreenNode[] {
   const wanted = wantedText(query);
-  const named = screen.nodes.filter((node) => node.name !== null || node.testId !== null);
+  const named = screen.nodes.filter(
+    (node) => !node.windowChrome && (node.name !== null || node.testId !== null),
+  );
   if (wanted === null) return named.slice(0, 5);
   const target = wanted.toLowerCase();
   return named

@@ -272,6 +272,52 @@ test('parseScreen normalizes macOS XCUI types with the iOS roles', () => {
   expect(byRef('@e7')?.role).toBe('button');
 });
 
+const CHROME_IDS = ['_XCUI:CloseWindow', '_XCUI:FullScreenWindow', '_XCUI:MinimizeWindow'];
+
+test('the three macOS window buttons are chrome and nothing else is', () => {
+  const chrome = macosConfigMissing.nodes.filter((node) => node.windowChrome);
+  expect(chrome.map((node) => node.testId)).toEqual(CHROME_IDS);
+  expect(chrome.every((node) => node.role === 'button')).toBe(true);
+  expect(macosConfigMissing.nodes.filter((node) => !node.windowChrome)).toHaveLength(7);
+});
+
+test('window chrome stays out of locators but still renders', () => {
+  expect(resolve(macosConfigMissing, { role: 'button' }).outcome).toBe('none');
+  expect(renderScreen(macosConfigMissing)).toContain('#_XCUI:CloseWindow');
+});
+
+function windowWithButtons(): RawSnapshot {
+  const button = (index: number, identifier?: string) => ({
+    ref: `e${String(index + 1)}`,
+    index,
+    type: 'Button',
+    depth: 1,
+    parentIndex: 0,
+    rect: { x: index * 20, y: 0, width: 12, height: 14 },
+    ...(identifier === undefined ? { label: 'Sign in' } : { identifier }),
+  });
+  return {
+    nodes: [
+      { ref: 'e1', index: 0, type: 'Window', depth: 0 },
+      button(1),
+      ...CHROME_IDS.map((identifier, offset) => button(offset + 2, identifier)),
+    ],
+  };
+}
+
+test('a macOS window with one real button resolves getByRole button to it', () => {
+  const resolution = resolve(parseScreen(windowWithButtons(), 'macos'), { role: 'button' });
+  expect(resolution.outcome).toBe('one');
+  if (resolution.outcome !== 'one') return;
+  expect(resolution.node.name).toBe('Sign in');
+});
+
+test('an _XCUI identifier is not chrome on iOS', () => {
+  const screen = parseScreen(windowWithButtons(), 'ios');
+  expect(screen.nodes.some((node) => node.windowChrome)).toBe(false);
+  expect(resolve(screen, { role: 'button' }).outcome).toBe('many');
+});
+
 test('an Android identifier becomes testId, a React Native testID and a resource id alike', () => {
   expect(androidLogin.nodes.find((node) => node.ref === '@e24')?.testId).toBe('email');
   expect(androidHome.nodes.find((node) => node.ref === '@e14')?.testId).toBe('android:id/content');
