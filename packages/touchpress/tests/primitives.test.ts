@@ -128,3 +128,23 @@ test('clearKeychain on Android notes that there was nothing to reset', async () 
     'keychain: nothing to reset on Android, clearing state covers the keystore',
   ]);
 });
+
+test('clearKeychain on macOS notes that there was nothing to reset', async () => {
+  const driver = createFakeDriver({ screens: ['macos-config-missing'] });
+  const notes: string[] = [];
+  const sink = {
+    ...createRecordingSink(),
+    note: (key: string, value: string) => notes.push(`${key}: ${value}`),
+  };
+  const app = createDevice(
+    await open(driver, { platform: 'macos', readyWhen: { text: 'Clerk is not configured' } }),
+    sink,
+  );
+
+  await app.clearKeychain();
+
+  expect(driver.calls).toContain('resetKeychain');
+  expect(notes).toEqual([
+    'keychain: nothing to reset on macOS, touchpress never touches the login keychain',
+  ]);
+});

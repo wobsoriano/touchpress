@@ -43,7 +43,7 @@ type Outcome =
 
 function instructionsFor(platform: Platform): string {
   return [
-    `You are driving a ${platform} mobile app that is already launched and in the foreground.`,
+    `You are driving a ${platform} app that is already launched and in the foreground.`,
     'Start with snapshot.',
     'A snapshot prints one node per line, indented by depth, as in: @e4 [button] "Sign in" #signIn',
     "Use press to tap a node and fill to replace a field's text.",
@@ -56,7 +56,7 @@ function instructionsFor(platform: Platform): string {
 }
 
 const EXTRACT_INSTRUCTIONS = [
-  'You are reading one accessibility tree captured from a mobile app.',
+  'You are reading one accessibility tree captured from an app.',
   'Each line is one node, indented by depth, carrying its ref, role, name, and test id, as in: @e4 [button] "Sign in" #signIn',
   "The tree never prints a field's value.",
   'Answer from what the tree shows, not from what the app is expected to show.',

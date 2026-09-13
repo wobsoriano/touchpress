@@ -167,7 +167,8 @@ export function createAgentDeviceDriver(
      */
     resetKeychain: (): Promise<void> =>
       run('resetKeychain', async () => {
-        // Android keeps an app's keystore entries with its data, so clearing the app already removed them.
+        // Android keeps an app's keystore entries with its data, so clearing the app already removed them,
+        // and the macOS login keychain belongs to the user rather than the test run.
         if (selection.platform !== 'ios') return;
         // `booted` is simctl's own alias for the one running simulator, for a session opened
         // by a daemon that did not report the identifier.

@@ -58,7 +58,7 @@ await device.clearKeychain();
 await device.clearState();
 ```
 
-On Android it does nothing. Clearing state already removes the app's keystore entries, and the step records a note saying there was nothing to reset.
+On Android it does nothing. Clearing state already removes the app's keystore entries, and the step records a note saying there was nothing to reset. On macOS it does nothing either and records the same kind of note, because touchpress never touches the login keychain.
 
 ## DEVICE_IN_USE
 

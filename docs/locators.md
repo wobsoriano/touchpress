@@ -149,9 +149,9 @@ That is what makes the filter usable on a React Native tree, where almost every 
 
 ## Roles
 
-Roles are normalized to one vocabulary across iOS and Android, spelled the way `agent-device snapshot` prints them, so a failure message and a manual snapshot read alike.
+Roles are normalized to one vocabulary across iOS, macOS, and Android, spelled the way `agent-device snapshot` prints them, so a failure message and a manual snapshot read alike. macOS reports the same types as iOS, so the two share a column.
 
-| role                | iOS types it covers                                   | Android classes it covers                                             |
+| role                | iOS and macOS types it covers                         | Android classes it covers                                             |
 | ------------------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
 | `application`       | `Application`                                         |                                                                       |
 | `window`            | `Window`                                              |                                                                       |
@@ -169,9 +169,11 @@ Roles are normalized to one vocabulary across iOS and Android, spelled the way `
 | `alert`             | `Alert`, `Sheet`                                      |                                                                       |
 | `other`             | `Other`, and anything unrecognized                    | `ViewGroup`, `FrameLayout`, `LinearLayout`, and anything unrecognized |
 
-`secure-text-field` is iOS only. An Android password field is an `EditText`, resolves as `text-field`, and its fill confirms on the masked read-back, as [`fill`](./basics.md) describes.
+`secure-text-field` is iOS and macOS only. An Android password field is an `EditText`, resolves as `text-field`, and its fill confirms on the masked read-back, as [`fill`](./basics.md) describes.
 
 `other` is a real role, not a failure signal. React Native emits many labelled container views with no semantic type. The platform spelling is kept on each node as `rawType` if you need it through `device.screen()`.
+
+On macOS, XCUI adds close, full-screen, and minimize buttons to every window. Those nodes carry `windowChrome: true`, and no locator matches them, so `getByRole('button')` stays strict. They still appear in `screen.txt`.
 
 The Android half of the table was read off a booted API 36 emulator running the sample app. React Native reports fully qualified class names, so the entries are `android.widget.Button`, `android.view.ViewGroup` and so on. Every React Native `View` reports `android.view.ViewGroup`, the containers carrying a `testID` included, which is why most of an Android tree is `other`.
 
