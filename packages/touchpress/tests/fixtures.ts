@@ -15,6 +15,7 @@ const FIXTURE_PLATFORMS = {
   'android-list': 'android',
   'android-list-raw': 'android',
   'android-list-scrolled': 'android',
+  'macos-config-missing': 'macos',
 } satisfies Readonly<Record<string, Platform>>;
 
 export type FixtureName = keyof typeof FIXTURE_PLATFORMS;

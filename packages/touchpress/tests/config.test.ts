@@ -18,6 +18,10 @@ test('parse fills every default', () => {
   expect(options.launchUrl).toBe(null);
 });
 
+test('macos is a platform', () => {
+  expect(parseDeviceOptions({ ...minimal, platform: 'macos' }).platform).toBe('macos');
+});
+
 test('launchUrl passes through as given, and an empty one names itself', () => {
   const url = 'com.example.app://expo-development-client/?url=http://localhost:8081';
   expect(parseDeviceOptions({ ...minimal, launchUrl: url }).launchUrl).toBe(url);

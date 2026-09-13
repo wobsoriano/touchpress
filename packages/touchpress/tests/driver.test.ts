@@ -217,3 +217,11 @@ test('resetting the keychain runs nothing on Android', async () => {
   await androidDriver.resetKeychain();
   expect(android.ran).toEqual([]);
 });
+
+test('resetting the keychain runs nothing on macOS', async () => {
+  const mac = recordingRunCommand();
+  const macDriver = driverFor({ platform: 'macos', name: null }, mac);
+  await macDriver.open({ app: 'com.example.app', relaunch: true, url: null });
+  await macDriver.resetKeychain();
+  expect(mac.ran).toEqual([]);
+});

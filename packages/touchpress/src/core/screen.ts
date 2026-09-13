@@ -8,7 +8,7 @@ import {
   type TextMatch,
 } from './query.ts';
 
-export type Platform = 'ios' | 'android';
+export type Platform = 'ios' | 'android' | 'macos';
 
 export type Rect = {
   readonly x: number;
@@ -162,8 +162,15 @@ const ANDROID_ROLES: Readonly<Record<string, Role>> = {
   'androidx.recyclerview.widget.RecyclerView': 'scroll-area',
 };
 
+/** macOS XCUI reports the same raw types as iOS. */
+const ROLES: Readonly<Record<Platform, Readonly<Record<string, Role>>>> = {
+  ios: IOS_ROLES,
+  android: ANDROID_ROLES,
+  macos: IOS_ROLES,
+};
+
 function roleOf(rawType: string, platform: Platform): Role {
-  const table = platform === 'ios' ? IOS_ROLES : ANDROID_ROLES;
+  const table = ROLES[platform];
   const direct = table[rawType];
   if (direct !== undefined) return direct;
   const short = rawType.slice(rawType.lastIndexOf('.') + 1);

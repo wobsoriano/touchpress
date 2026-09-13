@@ -14,6 +14,7 @@ const home = loadScreen('home');
 const explore = loadScreen('explore');
 const androidHome = loadScreen('android-home');
 const androidLogin = loadScreen('android-login');
+const macosConfigMissing = loadScreen('macos-config-missing');
 
 function byText(value: string, exact?: boolean): Query {
   return { name: textMatch(value, exact) };
@@ -260,6 +261,15 @@ test('parseScreen normalizes the Android widget classes this app renders into CL
   const button = androidLogin.nodes.find((node) => node.ref === '@e26');
   expect(button?.role).toBe('button');
   expect(button?.rawType).toBe('android.widget.Button');
+});
+
+test('parseScreen normalizes macOS XCUI types with the iOS roles', () => {
+  const byRef = (ref: string) => macosConfigMissing.nodes.find((node) => node.ref === ref);
+  expect(byRef('@e2')?.role).toBe('window');
+  expect(byRef('@e3')?.role).toBe('other');
+  expect(byRef('@e3')?.rawType).toBe('Element(3)');
+  expect(byRef('@e4')?.role).toBe('text');
+  expect(byRef('@e7')?.role).toBe('button');
 });
 
 test('an Android identifier becomes testId, a React Native testID and a resource id alike', () => {

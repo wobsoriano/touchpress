@@ -13,7 +13,7 @@ import type { Platform } from './screen.ts';
 export type TouchpressOptions = {
   /** Required. */
   platform: Platform | undefined;
-  /** Required. Bundle id on iOS, package name on Android. Never a path to an artifact. */
+  /** Required. Bundle id on iOS and macOS, package name on Android. Never a path to an artifact. */
   app: string | undefined;
   /**
    * Required. `open` returns as soon as the native process launches, so without
@@ -123,8 +123,8 @@ const ROLES: readonly Role[] = [
  */
 export function parseDeviceOptions(raw: unknown): ResolvedOptions {
   const platform = read(raw, 'platform');
-  if (platform !== 'ios' && platform !== 'android')
-    throw fail('platform', "must be 'ios' or 'android'.");
+  if (platform !== 'ios' && platform !== 'android' && platform !== 'macos')
+    throw fail('platform', "must be 'ios', 'android', or 'macos'.");
 
   const app = read(raw, 'app');
   if (typeof app !== 'string' || app.length === 0) {

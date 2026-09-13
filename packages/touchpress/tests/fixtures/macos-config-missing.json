@@ -1,0 +1,201 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "enabled": false,
+        "hittable": false,
+        "label": "Clerk is not configured",
+        "index": 0,
+        "depth": 0,
+        "type": "Application",
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "ref": "e1"
+      },
+      {
+        "enabled": false,
+        "hittable": false,
+        "label": "Clerk is not configured",
+        "index": 1,
+        "depth": 1,
+        "type": "Window",
+        "rect": {
+          "x": 2092,
+          "height": 548,
+          "y": 156,
+          "width": 760
+        },
+        "parentIndex": 0,
+        "ref": "e2"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "label": "Clerk is not configured",
+        "index": 2,
+        "depth": 2,
+        "type": "Element(3)",
+        "rect": {
+          "x": 2092,
+          "height": 520,
+          "y": 184,
+          "width": 760
+        },
+        "parentIndex": 1,
+        "ref": "e3"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "label": "Clerk is not configured",
+        "index": 3,
+        "depth": 3,
+        "type": "StaticText",
+        "rect": {
+          "x": 2346,
+          "height": 33,
+          "y": 390,
+          "width": 253
+        },
+        "value": "Clerk is not configured",
+        "parentIndex": 2,
+        "ref": "e4"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "label": "Set CLERK_PUBLISHABLE_KEY to your Clerk publishable key and relaunch.",
+        "index": 4,
+        "depth": 3,
+        "type": "StaticText",
+        "rect": {
+          "x": 2229,
+          "height": 19,
+          "y": 443,
+          "width": 486
+        },
+        "value": "Set CLERK_PUBLISHABLE_KEY to your Clerk publishable key and relaunch.",
+        "parentIndex": 2,
+        "ref": "e5"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "label": "publishable key must start with pk_test_ or pk_live_",
+        "index": 5,
+        "depth": 3,
+        "type": "StaticText",
+        "rect": {
+          "x": 2284,
+          "height": 16,
+          "y": 482,
+          "width": 376
+        },
+        "value": "publishable key must start with pk_test_ or pk_live_",
+        "parentIndex": 2,
+        "ref": "e6"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "index": 6,
+        "depth": 2,
+        "type": "Button",
+        "rect": {
+          "x": 2100,
+          "height": 14,
+          "y": 163,
+          "width": 12
+        },
+        "identifier": "_XCUI:CloseWindow",
+        "parentIndex": 1,
+        "ref": "e7"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "index": 7,
+        "depth": 2,
+        "type": "Button",
+        "rect": {
+          "x": 2140,
+          "height": 14,
+          "y": 163,
+          "width": 12
+        },
+        "identifier": "_XCUI:FullScreenWindow",
+        "parentIndex": 1,
+        "ref": "e8"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "index": 8,
+        "depth": 2,
+        "type": "Button",
+        "rect": {
+          "x": 2120,
+          "height": 14,
+          "y": 163,
+          "width": 12
+        },
+        "identifier": "_XCUI:MinimizeWindow",
+        "parentIndex": 1,
+        "ref": "e9"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "label": "Todo Quickgui",
+        "index": 9,
+        "depth": 2,
+        "type": "StaticText",
+        "rect": {
+          "x": 2424,
+          "height": 16,
+          "y": 161,
+          "width": 96
+        },
+        "value": "Todo Quickgui",
+        "parentIndex": 1,
+        "ref": "e10"
+      }
+    ],
+    "truncated": false,
+    "appName": "com.example.todo-quickgui.dev",
+    "appBundleId": "com.example.todo-quickgui.dev",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 10,
+      "totalNodeCount": 10,
+      "reasons": []
+    },
+    "snapshotQuality": {
+      "state": "healthy",
+      "backend": "tree",
+      "timing": {
+        "acquisitionMs": 119.09294128417969,
+        "presentationMs": 0.6219148635864258
+      }
+    },
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 1,
+        "p50Ms": 2575,
+        "p95Ms": 2575,
+        "maxMs": 2575,
+        "slowThresholdMs": 1500,
+        "platform": "macos",
+        "backends": {
+          "xctest": 1
+        }
+      }
+    },
+    "refsGeneration": 221287
+  }
+}

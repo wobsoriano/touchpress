@@ -87,7 +87,8 @@ export type Device = {
   /**
    * Resets the simulator's keychain, which is shared by every app on it, so
    * it is not part of `clearState`. A no-op on Android, where clearing state
-   * already removes the app's keystore entries.
+   * already removes the app's keystore entries, and on macOS, where the login
+   * keychain belongs to the user.
    */
   clearKeychain(): Promise<void>;
   /** Relaunches the app and waits for the ready gate again. */

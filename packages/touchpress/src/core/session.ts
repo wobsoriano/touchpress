@@ -11,10 +11,24 @@ import type {
 import { TouchpressError } from './errors.ts';
 import { describeQuery } from './query.ts';
 import { renderTitle, type ActionSink } from './report.ts';
-import { parseScreen, renderScreen, resolve, type PinnedRef, type Screen } from './screen.ts';
+import {
+  parseScreen,
+  renderScreen,
+  resolve,
+  type PinnedRef,
+  type Platform,
+  type Screen,
+} from './screen.ts';
 
 const READY_POLL_MS = 250;
 const SNAPSHOT_TIMEOUT_MS = 15_000;
+
+/** Only the iOS simulator has a shared keychain to reset. */
+const NOTHING_TO_RESET: Readonly<Record<Platform, string | null>> = {
+  ios: null,
+  android: 'nothing to reset on Android, clearing state covers the keystore',
+  macos: 'nothing to reset on macOS, touchpress never touches the login keychain',
+};
 
 /**
  * There is no unopened or opening variant because `openSession` is the only
@@ -94,7 +108,7 @@ export type DeviceSession = {
   /**
    * Resets the simulator's keychain, which every app on it shares. Separate
    * from `clearState` so an app-scoped clear never wipes another app's store.
-   * Reported as one step, with a note on Android where there is nothing to reset.
+   * Reported as one step, with a note on Android and macOS where there is nothing to reset.
    */
   clearKeychain(sink: ActionSink): Promise<void>;
   dismissDevOverlay(): Promise<void>;
@@ -278,8 +292,8 @@ function createSession(
       }),
     clearKeychain: (sink) =>
       sink.step(renderTitle({ kind: 'clear-keychain' }), async () => {
-        if (options.platform === 'android')
-          sink.note('keychain', 'nothing to reset on Android, clearing state covers the keystore');
+        const note = NOTHING_TO_RESET[options.platform];
+        if (note !== null) sink.note('keychain', note);
         await run((one) => one.resetKeychain());
       }),
     dismissDevOverlay: () => run(() => driver.dismissDevOverlay()),
