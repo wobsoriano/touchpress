@@ -1,5 +1,11 @@
 # touchpress
 
+## 0.2.2
+
+### Patch Changes
+
+- 847f7c7: Bump agent-device to 0.21.1
+
 ## 0.2.1
 
 ### Patch Changes
