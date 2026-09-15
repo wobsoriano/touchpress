@@ -90,7 +90,7 @@ function assert(
     options: {},
     negate: overrides?.negate ?? false,
     timeoutMs: overrides?.timeoutMs ?? 300,
-    policy: policy,
+    policy,
     sink: run.sink,
   });
 }

@@ -33,10 +33,10 @@ const DEFAULT_OUTPUT_DIR = 'touchpress-results';
 const openSessions = new Map<string, DeviceSession>();
 
 /** Idempotent. A duplicated worker fixture registration closing twice is harmless. */
-async function closeAll(reason: 'requested' | 'worker-exit'): Promise<void> {
+async function closeAll(): Promise<void> {
   const sessions = [...openSessions.values()];
   openSessions.clear();
-  await Promise.all(sessions.map((session) => session.close(reason)));
+  await Promise.all(sessions.map((session) => session.close('worker-exit')));
 }
 
 export type TouchpressFixtures = VitestOptions & {
@@ -139,7 +139,7 @@ export function createTest(createDriver: DriverFactory) {
       // oxlint-disable-next-line no-empty-pattern
       async ({}, use) => {
         await use(undefined);
-        await closeAll('worker-exit');
+        await closeAll();
       },
       { scope: 'worker', auto: true },
     ],

@@ -213,7 +213,7 @@ export type TouchpressExpect = {
   (actual: Device): DeviceAssertion;
 } & ExpectStatic;
 
-export const expect: TouchpressExpect = Object.assign(
+export const expect = Object.assign(
   (actual: unknown) => vitestExpect(actual),
   vitestExpect,
 ) as TouchpressExpect;
