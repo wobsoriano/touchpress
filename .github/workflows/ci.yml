@@ -21,4 +21,7 @@ jobs:
 
       - run: vp check
 
+      # The Vitest specs are the Playwright specs with one import line changed, and this keeps them so.
+      - run: node apps/e2e/scripts/spec-parity.mjs
+
       - run: vp test

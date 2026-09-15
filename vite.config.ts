@@ -22,12 +22,14 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          // Playwright specs live in e2e/ and tests/playwright-adapter/ and are run by
-          // `playwright test`, not vitest. The Vitest adapter harness has its own project.
+          // The device specs in e2e/ and e2e-vitest/ and the Playwright harness in
+          // tests/playwright-adapter/ need a device or `playwright test`. The Vitest adapter
+          // harness has its own project.
           exclude: [
             '**/node_modules/**',
             '**/dist/**',
             '**/e2e/**',
+            '**/e2e-vitest/**',
             '**/tests/playwright-adapter/**',
             '**/tests/vitest-adapter/**',
           ],
