@@ -159,8 +159,8 @@ import { preflight, setupTest } from 'touchpress';
 
 setupTest(
   'the project names a booted device',
-  async ({ platform, app, readyWhen, deviceName, sessionPrefix }) => {
-    const report = await preflight({ platform, app, readyWhen, deviceName, sessionPrefix });
+  async ({ platform, app, readyWhen, target, sessionPrefix }) => {
+    const report = await preflight({ platform, app, readyWhen, target, sessionPrefix });
     if (report.ok) return;
     throw new Error(report.problems.join('\n'));
   },

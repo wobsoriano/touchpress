@@ -39,7 +39,9 @@ test('every field names itself when it is wrong', () => {
     /use\.readyWhen/,
   );
   expect(() => parseDeviceOptions({ ...minimal, evidence: 'sometimes' })).toThrow(/use\.evidence/);
-  expect(() => parseDeviceOptions({ ...minimal, deviceName: [] })).toThrow(/use\.deviceName/);
+  expect(() => parseDeviceOptions({ ...minimal, target: { name: [] } })).toThrow(
+    /use\.target\.name/,
+  );
 });
 
 test("Playwright's own actionTimeout drives an action, and its zero reads as unset", () => {
@@ -67,14 +69,14 @@ test('readyWhen accepts text, testId, and role forms', () => {
 });
 
 test('a device pool is indexed by worker slot and a short pool is a config error', () => {
-  const pool = parseDeviceOptions({ ...minimal, deviceName: ['one', 'two'] });
+  const pool = parseDeviceOptions({ ...minimal, target: { name: ['one', 'two'] } });
   expect(deviceNameForSlot(pool, 0)).toBe('one');
   expect(deviceNameForSlot(pool, 1)).toBe('two');
   expect(() => deviceNameForSlot(pool, 2)).toThrow(/worker slot 2/);
 });
 
 test("one device never serves a second worker, because the second would reclaim the first's session", () => {
-  const named = parseDeviceOptions({ ...minimal, deviceName: 'iPhone 17 Pro Max' });
+  const named = parseDeviceOptions({ ...minimal, target: { name: 'iPhone 17 Pro Max' } });
   expect(deviceNameForSlot(named, 0)).toBe('iPhone 17 Pro Max');
   expect(() => deviceNameForSlot(named, 1)).toThrow(/one device, "iPhone 17 Pro Max"/);
   expect(() => deviceNameForSlot(named, 1)).toThrow(/workers: 1/);
@@ -85,8 +87,32 @@ test("one device never serves a second worker, because the second would reclaim 
     /every worker would target the same booted device/,
   );
 
-  const onePool = parseDeviceOptions({ ...minimal, deviceName: ['only'] });
+  const onePool = parseDeviceOptions({ ...minimal, target: { name: ['only'] } });
   expect(() => deviceNameForSlot(onePool, 1)).toThrow(/lists 1 devices/);
+});
+
+test('a target object with no provider is local, and an empty one is the first booted device', () => {
+  expect(parseDeviceOptions({ ...minimal, target: {} }).target).toEqual({
+    kind: 'local',
+    device: { kind: 'first-booted' },
+  });
+  expect(parseDeviceOptions({ ...minimal, target: { name: 'iPhone 16' } }).target).toEqual({
+    kind: 'local',
+    device: { kind: 'named', name: 'iPhone 16' },
+  });
+});
+
+test('a local pool is indexed by slot whether or not the provider is spelled out', () => {
+  const spelled = parseDeviceOptions({
+    ...minimal,
+    target: { provider: 'local', name: ['one', 'two'] },
+  });
+  expect(spelled.target).toEqual({
+    kind: 'local',
+    device: { kind: 'pool', names: ['one', 'two'] },
+  });
+  expect(deviceNameForSlot(spelled, 1)).toBe('two');
+  expect(() => deviceNameForSlot(spelled, 2)).toThrow(/worker slot 2/);
 });
 
 test('session names are deterministic so a replacement worker reuses one', () => {
@@ -104,8 +130,12 @@ test('aiModel rides along in `use` without reaching the resolved device options'
 const browserstack = {
   ...minimal,
   platform: 'android',
-  deviceName: 'Google Pixel 8',
-  cloud: { provider: 'browserstack', app: 'bs://abc123', osVersion: '14.0' },
+  target: {
+    provider: 'browserstack',
+    name: 'Google Pixel 8',
+    app: 'bs://abc123',
+    osVersion: '14.0',
+  },
 } as const;
 
 test('a BrowserStack target carries its app and version, and every unset field is null', () => {
@@ -131,8 +161,8 @@ test('a BrowserStack target carries its app and version, and every unset field i
 test('every BrowserStack option a project sets reaches the target', () => {
   const target = parseDeviceOptions({
     ...browserstack,
-    cloud: {
-      ...browserstack.cloud,
+    target: {
+      ...browserstack.target,
       project: 'checkout',
       build: '4711',
       sessionName: 'sign in',
@@ -166,7 +196,7 @@ test('an AWS Device Farm target carries both ARNs and defaults the rest to null'
   const target = parseDeviceOptions({
     ...minimal,
     platform: 'android',
-    cloud: { provider: 'aws-device-farm', projectArn: 'arn:project', deviceArn: 'arn:device' },
+    target: { provider: 'aws-device-farm', projectArn: 'arn:project', deviceArn: 'arn:device' },
   }).target;
   expect(target).toEqual({
     kind: 'aws-device-farm',
@@ -182,65 +212,80 @@ test('an AWS Device Farm target carries both ARNs and defaults the rest to null'
 test('a Limrun target carries only the artifact to install', () => {
   const target = parseDeviceOptions({
     ...minimal,
-    cloud: { provider: 'limrun', install: './app.app' },
+    target: { provider: 'limrun', install: './app.app' },
   }).target;
   expect(target).toEqual({ kind: 'limrun', install: './app.app' });
 });
 
-test('every cloud field names itself when it is missing or wrong', () => {
-  expect(() => parseDeviceOptions({ ...minimal, cloud: { provider: 'saucelabs' } })).toThrow(
-    /use\.cloud\.provider/,
+test('every target field names itself when it is missing or wrong', () => {
+  expect(() => parseDeviceOptions({ ...minimal, target: { provider: 'saucelabs' } })).toThrow(
+    /use\.target\.provider/,
   );
-  expect(() =>
-    parseDeviceOptions({ ...browserstack, cloud: { provider: 'browserstack', osVersion: '14.0' } }),
-  ).toThrow(/use\.cloud\.app/);
-  expect(() =>
-    parseDeviceOptions({ ...browserstack, cloud: { provider: 'browserstack', app: 'bs://a' } }),
-  ).toThrow(/use\.cloud\.osVersion/);
-  expect(() =>
-    parseDeviceOptions({ ...minimal, cloud: { provider: 'aws-device-farm', deviceArn: 'arn:d' } }),
-  ).toThrow(/use\.cloud\.projectArn/);
-  expect(() =>
-    parseDeviceOptions({ ...minimal, cloud: { provider: 'aws-device-farm', projectArn: 'arn:p' } }),
-  ).toThrow(/use\.cloud\.deviceArn/);
-  expect(() => parseDeviceOptions({ ...minimal, cloud: { provider: 'limrun' } })).toThrow(
-    /use\.cloud\.install/,
+  expect(() => parseDeviceOptions({ ...minimal, target: 'iPhone 17 Pro Max' })).toThrow(
+    /use\.target .*must be an object/s,
   );
   expect(() =>
     parseDeviceOptions({
       ...browserstack,
-      cloud: { ...browserstack.cloud, orientation: 'sideways' },
+      target: { provider: 'browserstack', name: 'Google Pixel 8', osVersion: '14.0' },
     }),
-  ).toThrow(/use\.cloud\.orientation/);
+  ).toThrow(/use\.target\.app/);
+  expect(() =>
+    parseDeviceOptions({
+      ...browserstack,
+      target: { provider: 'browserstack', name: 'Google Pixel 8', app: 'bs://a' },
+    }),
+  ).toThrow(/use\.target\.osVersion/);
+  expect(() =>
+    parseDeviceOptions({ ...minimal, target: { provider: 'browserstack', app: 'bs://a' } }),
+  ).toThrow(/use\.target\.name.+BrowserStack/s);
+  expect(() =>
+    parseDeviceOptions({ ...minimal, target: { provider: 'aws-device-farm', deviceArn: 'arn:d' } }),
+  ).toThrow(/use\.target\.projectArn/);
+  expect(() =>
+    parseDeviceOptions({
+      ...minimal,
+      target: { provider: 'aws-device-farm', projectArn: 'arn:p' },
+    }),
+  ).toThrow(/use\.target\.deviceArn/);
+  expect(() => parseDeviceOptions({ ...minimal, target: { provider: 'limrun' } })).toThrow(
+    /use\.target\.install/,
+  );
+  expect(() =>
+    parseDeviceOptions({
+      ...browserstack,
+      target: { ...browserstack.target, orientation: 'sideways' },
+    }),
+  ).toThrow(/use\.target\.orientation/);
 });
 
 test('a named network profile and a custom network cannot both be set', () => {
   expect(() =>
     parseDeviceOptions({
       ...browserstack,
-      cloud: { ...browserstack.cloud, networkProfile: '4g-lte', customNetwork: '1000 1000 50 0' },
+      target: { ...browserstack.target, networkProfile: '4g-lte', customNetwork: '1000 1000 50 0' },
     }),
-  ).toThrow(/use\.cloud\.networkProfile/);
+  ).toThrow(/use\.target\.networkProfile/);
 });
 
-test('deviceName means something different on every target, and says so when it is wrong', () => {
-  expect(() => parseDeviceOptions({ ...browserstack, deviceName: undefined })).toThrow(
-    /use\.deviceName.+BrowserStack/s,
-  );
+test('a target that picks its own device rejects a name, and says what names it instead', () => {
   expect(() =>
     parseDeviceOptions({
       ...minimal,
-      deviceName: 'arn:device',
-      cloud: { provider: 'aws-device-farm', projectArn: 'arn:p', deviceArn: 'arn:d' },
+      target: {
+        provider: 'aws-device-farm',
+        name: 'arn:device',
+        projectArn: 'arn:p',
+        deviceArn: 'arn:d',
+      },
     }),
-  ).toThrow(/use\.deviceName.+cloud\.deviceArn/s);
+  ).toThrow(/use\.target\.name.+target\.deviceArn/s);
   expect(() =>
     parseDeviceOptions({
       ...minimal,
-      deviceName: 'whatever',
-      cloud: { provider: 'limrun', install: './app.app' },
+      target: { provider: 'limrun', name: 'whatever', install: './app.app' },
     }),
-  ).toThrow(/use\.deviceName.+Limrun/s);
+  ).toThrow(/use\.target\.name.+Limrun/s);
 });
 
 test('one BrowserStack device name serves every worker, because each opens its own hosted session', () => {
@@ -251,7 +296,7 @@ test('one BrowserStack device name serves every worker, because each opens its o
 
   const pool = parseDeviceOptions({
     ...browserstack,
-    deviceName: ['Google Pixel 8', 'Samsung Galaxy S23'],
+    target: { ...browserstack.target, name: ['Google Pixel 8', 'Samsung Galaxy S23'] },
   });
   expect(deviceNameForSlot(pool, 0)).toBe('Google Pixel 8');
   expect(deviceNameForSlot(pool, 1)).toBe('Samsung Galaxy S23');
@@ -261,11 +306,11 @@ test('one BrowserStack device name serves every worker, because each opens its o
 test('a target that picks its own device names none for any slot', () => {
   const aws = parseDeviceOptions({
     ...minimal,
-    cloud: { provider: 'aws-device-farm', projectArn: 'arn:p', deviceArn: 'arn:d' },
+    target: { provider: 'aws-device-farm', projectArn: 'arn:p', deviceArn: 'arn:d' },
   });
   const limrun = parseDeviceOptions({
     ...minimal,
-    cloud: { provider: 'limrun', install: './app.app' },
+    target: { provider: 'limrun', install: './app.app' },
   });
   expect(deviceNameForSlot(aws, 3)).toBe(null);
   expect(deviceNameForSlot(limrun, 3)).toBe(null);

@@ -10,7 +10,7 @@ type ParseInput = Partial<TouchpressOptions> & { actionTimeout?: number };
 const options: ParseInput = {
   platform: 'ios',
   app: 'com.wobsoriano.awesometodo',
-  deviceName: 'iPhone 17 Pro Max',
+  target: { name: 'iPhone 17 Pro Max' },
   readyWhen: { text: 'GET STARTED' },
   launchTimeout: 1000,
   actionTimeout: 600,

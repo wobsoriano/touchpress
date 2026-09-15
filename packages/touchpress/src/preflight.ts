@@ -98,7 +98,7 @@ function cloudReport(
         return {
           ok: false,
           problems: [
-            'No AWS region is set. Set use.cloud.region, or AWS_REGION or AWS_DEFAULT_REGION in the environment.',
+            'No AWS region is set. Set use.target.region, or AWS_REGION or AWS_DEFAULT_REGION in the environment.',
           ],
         };
       }
@@ -165,5 +165,5 @@ function notBooted(platform: Platform, name: string, booted: readonly DeviceInfo
     return `No booted ${platform} device is named '${name}', because no ${platform} device is booted at all. Boot '${name}'.`;
   }
   const listing = booted.map((device) => `'${device.name}'`).join(', ');
-  return `No booted ${platform} device is named '${name}'. Booted right now: ${listing}. Set use.deviceName to one of those or boot '${name}'.`;
+  return `No booted ${platform} device is named '${name}'. Booted right now: ${listing}. Set use.target.name to one of those or boot '${name}'.`;
 }

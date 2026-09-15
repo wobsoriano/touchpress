@@ -21,17 +21,12 @@ export type TouchpressOptions = {
    */
   readyWhen: ReadyQuery | undefined;
   /**
-   * Device name. An array is a pool indexed by the runner's worker slot. Unset means the first
-   * booted device. What it selects depends on `cloud`, so read that key's documentation too.
-   */
-  deviceName: string | readonly string[] | undefined;
-  /**
-   * The hosted provider to run on. Unset runs on a local simulator or emulator.
+   * Where the suite runs. Unset is the first booted local simulator or emulator.
    *
    * One key rather than one per field, so a project replaces the whole target in a single write
    * and Playwright's per-key `use` merge can never blend two providers.
    */
-  cloud: CloudOptions | undefined;
+  target: TargetOptions | undefined;
   /**
    * A deep link to open the app with, on the launch and on every relaunch.
    * Unset launches the app plainly, which is what a release build wants. An
@@ -62,7 +57,7 @@ export type TouchpressOptions = {
  */
 export const TOUCHPRESS_DEFAULTS: Omit<
   TouchpressOptions,
-  'platform' | 'app' | 'readyWhen' | 'deviceName' | 'launchUrl' | 'cloud'
+  'platform' | 'app' | 'readyWhen' | 'target' | 'launchUrl'
 > = {
   relaunch: 'per-test',
   onDeviceInUse: 'fail',
@@ -92,12 +87,24 @@ export type DeviceChoice =
   | { readonly kind: 'pool'; readonly names: readonly string[] };
 
 /**
- * What `use.cloud` accepts. agent-device reads every credential from the environment itself, so
- * nothing here is a secret.
+ * What `use.target` accepts. `provider` decides what the rest of the object means, which is why the
+ * device selector sits inside it rather than beside it. agent-device reads every hosted provider's
+ * credentials from the environment itself, so nothing here is a secret.
  */
-export type CloudOptions =
+export type TargetOptions =
+  | {
+      /** @default 'local' */
+      provider?: 'local';
+      /**
+       * A booted simulator or emulator name. An array is a pool indexed by the runner's worker
+       * slot. Unset means the first booted device.
+       */
+      name?: string | readonly string[];
+    }
   | {
       provider: 'browserstack';
+      /** The device exactly as BrowserStack lists it. An array is a pool indexed by worker slot. */
+      name: string | readonly string[];
       /** bs:// reference, HTTP(S) URL, or local path. BrowserStack uploads a local path when it creates the session. */
       app: string;
       osVersion: string;
@@ -218,7 +225,7 @@ export function parseDeviceOptions(raw: unknown): ResolvedOptions {
     platform,
     app,
     readyWhen: parseReadyWhen(read(raw, 'readyWhen')),
-    target: parseTarget(read(raw, 'cloud'), read(raw, 'deviceName')),
+    target: parseTarget(read(raw, 'target')),
     launchUrl: optionalText('launchUrl', read(raw, 'launchUrl')),
     relaunch: oneOf(
       'relaunch',
@@ -311,11 +318,11 @@ function parseReadyWhen(raw: unknown): Query {
 function parseDeviceChoice(raw: unknown): DeviceChoice {
   if (raw === undefined) return { kind: 'first-booted' };
   if (typeof raw === 'string') {
-    if (raw.length === 0) throw fail('deviceName', 'must not be empty.');
+    if (raw.length === 0) throw fail('target.name', 'must not be empty.');
     return { kind: 'named', name: raw };
   }
   if (!isStringArray(raw) || raw.length === 0) {
-    throw fail('deviceName', 'must be a device name or a non-empty array of device names.');
+    throw fail('target.name', 'must be a device name or a non-empty array of device names.');
   }
   return { kind: 'pool', names: raw };
 }
@@ -324,40 +331,50 @@ function isStringArray(raw: unknown): raw is readonly string[] {
   return Array.isArray(raw) && raw.every((entry) => typeof entry === 'string');
 }
 
-const PROVIDERS = ['browserstack', 'aws-device-farm', 'limrun'] as const;
+const PROVIDERS = ['local', 'browserstack', 'aws-device-farm', 'limrun'] as const;
 
-function parseTarget(cloud: unknown, deviceName: unknown): Target {
-  if (cloud === undefined) return { kind: 'local', device: parseDeviceChoice(deviceName) };
-  const at = (key: string): unknown => read(cloud, key);
-  const optional = (key: string): string | null => optionalText(`cloud.${key}`, at(key));
+function parseTarget(raw: unknown): Target {
+  if (raw === undefined) return { kind: 'local', device: { kind: 'first-booted' } };
+  // A bare device name reads as an object with no keys, so without this it would silently resolve
+  // to the first booted device rather than to the one it names.
+  if (typeof raw !== 'object' || raw === null) {
+    throw fail(
+      'target',
+      "must be an object, such as { name: 'iPhone 17 Pro Max' } or { provider: 'browserstack', ... }.",
+    );
+  }
+  const at = (key: string): unknown => read(raw, key);
+  const optional = (key: string): string | null => optionalText(`target.${key}`, at(key));
 
-  switch (oneOf('cloud.provider', at('provider'), PROVIDERS)) {
+  switch (oneOf('target.provider', at('provider'), PROVIDERS, 'local')) {
+    case 'local':
+      return { kind: 'local', device: parseDeviceChoice(at('name')) };
     case 'browserstack': {
       const networkProfile = optional('networkProfile');
       const customNetwork = optional('customNetwork');
       if (networkProfile !== null && customNetwork !== null) {
         throw fail(
-          'cloud.networkProfile',
-          'and use.cloud.customNetwork cannot both be set. Choose a named profile or a custom network.',
+          'target.networkProfile',
+          'and use.target.customNetwork cannot both be set. Choose a named profile or a custom network.',
         );
       }
       return {
         kind: 'browserstack',
-        device: browserstackDevice(deviceName),
+        device: browserstackDevice(at('name')),
         app: required(
-          'cloud.app',
+          'target.app',
           at('app'),
           'is required. Give a bs:// reference, an HTTP(S) URL, or a local path to the app artifact.',
         ),
         osVersion: required(
-          'cloud.osVersion',
+          'target.osVersion',
           at('osVersion'),
           "is required. Name the OS version BrowserStack lists for the device, such as '14.0'.",
         ),
         project: optional('project'),
         build: optional('build'),
         sessionName: optional('sessionName'),
-        orientation: optionalOneOf('cloud.orientation', at('orientation'), [
+        orientation: optionalOneOf('target.orientation', at('orientation'), [
           'portrait',
           'landscape',
         ]),
@@ -367,31 +384,31 @@ function parseTarget(cloud: unknown, deviceName: unknown): Target {
         locale: optional('locale'),
         networkProfile,
         customNetwork,
-        noResignApp: flag('cloud.noResignApp', at('noResignApp'), false),
+        noResignApp: flag('target.noResignApp', at('noResignApp'), false),
       };
     }
     case 'aws-device-farm':
-      if (deviceName !== undefined) {
+      if (at('name') !== undefined) {
         throw fail(
-          'deviceName',
-          'must not be set on AWS Device Farm. The device is named by use.cloud.deviceArn.',
+          'target.name',
+          'must not be set on AWS Device Farm. The device is named by use.target.deviceArn.',
         );
       }
       return {
         kind: 'aws-device-farm',
         projectArn: required(
-          'cloud.projectArn',
+          'target.projectArn',
           at('projectArn'),
           'is required. Copy the ARN of the AWS Device Farm project to run in.',
         ),
         deviceArn: required(
-          'cloud.deviceArn',
+          'target.deviceArn',
           at('deviceArn'),
           'is required. Copy the ARN of the AWS Device Farm device to run on.',
         ),
         appArn: optional('appArn'),
         region: optional('region'),
-        interactionMode: optionalOneOf('cloud.interactionMode', at('interactionMode'), [
+        interactionMode: optionalOneOf('target.interactionMode', at('interactionMode'), [
           'INTERACTIVE',
           'NO_VIDEO',
           'VIDEO_ONLY',
@@ -399,16 +416,16 @@ function parseTarget(cloud: unknown, deviceName: unknown): Target {
         sessionName: optional('sessionName'),
       };
     case 'limrun':
-      if (deviceName !== undefined) {
+      if (at('name') !== undefined) {
         throw fail(
-          'deviceName',
+          'target.name',
           'must not be set on Limrun. Limrun allocates a fresh instance and takes no device selector.',
         );
       }
       return {
         kind: 'limrun',
         install: required(
-          'cloud.install',
+          'target.install',
           at('install'),
           'is required. Give the local path or URL of the app artifact. A fresh Limrun instance has no app on it.',
         ),
@@ -420,7 +437,7 @@ function browserstackDevice(raw: unknown): Extract<DeviceChoice, { kind: 'named'
   const choice = parseDeviceChoice(raw);
   if (choice.kind === 'first-booted') {
     throw fail(
-      'deviceName',
+      'target.name',
       "is required on BrowserStack. Name the device exactly as BrowserStack lists it, such as 'Google Pixel 8'.",
     );
   }
@@ -480,7 +497,7 @@ function fromPool(names: readonly string[], slot: number): string {
 
 function tooFewDevices(problem: string, slot: number): TouchpressError {
   return fail(
-    'deviceName',
+    'target.name',
     `${problem}, but Playwright asked for worker slot ${String(slot)}. List one device name per worker, or set \`workers: 1\`.`,
   );
 }
@@ -529,7 +546,7 @@ function optionalText(field: string, value: unknown): string | null {
   return value;
 }
 
-/** Carries its own detail, because what to put in a required cloud field differs for every one of them. */
+/** Carries its own detail, because what to put in a required device field differs for every one of them. */
 function required(field: string, value: unknown, detail: string): string {
   if (typeof value !== 'string' || value.length === 0) throw fail(field, detail);
   return value;

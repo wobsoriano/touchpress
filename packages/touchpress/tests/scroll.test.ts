@@ -67,7 +67,7 @@ type ParseInput = Partial<TouchpressOptions> & { actionTimeout?: number };
 const options: ParseInput = {
   platform: 'ios',
   app: 'dev.touchpress.e2e',
-  deviceName: 'iPhone 17 Pro Max',
+  target: { name: 'iPhone 17 Pro Max' },
   readyWhen: { testId: 'list' },
   launchTimeout: 1000,
   actionTimeout: 2000,
@@ -145,7 +145,7 @@ test('a tap that has to scroll on Android gets its direction from the container 
     rawScreens: ['android-list-raw'],
     onScroll: ['android-list-scrolled'],
   });
-  const session = await openList(driver, { platform: 'android', deviceName: 'Expo API 36' });
+  const session = await openList(driver, { platform: 'android', target: { name: 'Expo API 36' } });
   const app = createDevice(session, silentSink);
 
   await app.getByTestId('list-done').tap();

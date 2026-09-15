@@ -21,22 +21,22 @@ export default defineConfig<TouchpressOptions>({
     {
       name: 'setup-ios',
       testMatch: /preflight\.setup\.mts/,
-      use: { platform: 'ios', deviceName: 'iPhone 17 Pro Max' },
+      use: { platform: 'ios', target: { name: 'iPhone 17 Pro Max' } },
     },
     {
       name: 'setup-android',
       testMatch: /preflight\.setup\.mts/,
-      use: { platform: 'android', deviceName: 'ci-api34' },
+      use: { platform: 'android', target: { name: 'ci-api34' } },
     },
     {
       name: 'ios',
       dependencies: ['setup-ios'],
-      use: { platform: 'ios', deviceName: 'iPhone 17 Pro Max' },
+      use: { platform: 'ios', target: { name: 'iPhone 17 Pro Max' } },
     },
     {
       name: 'android',
       dependencies: ['setup-android'],
-      use: { platform: 'android', deviceName: 'ci-api34' },
+      use: { platform: 'android', target: { name: 'ci-api34' } },
     },
   ],
 });
@@ -50,6 +50,7 @@ A test reads those keys too, which is how a spec gates itself on the platform it
 
 ```ts
 test.skip(({ platform }) => platform === 'android', 'iOS keychain prompt');
+test.skip(({ target }) => target?.provider === 'browserstack', 'needs a local simulator');
 ```
 
 A skipped test opens no session, because touchpress's `device` fixture is never set up for it.
@@ -61,8 +62,7 @@ A skipped test opens no session, because touchpress's `device` fixture is never 
 | `platform`          | required       | `'ios'` or `'android'`                                                                  |
 | `app`               | required       | bundle id or package name, never a path to an artifact                                  |
 | `readyWhen`         | required       | the locator that means the bundle loaded. `{ text }`, `{ testId }`, or `{ role, name }` |
-| `deviceName`        | first booted   | device name. An array is a pool indexed by Playwright's `parallelIndex`                 |
-| `cloud`             | none           | run on a hosted device. `'browserstack'`, `'aws-device-farm'`, or `'limrun'`            |
+| `target`            | first booted   | where the suite runs. `{ name }` locally, or a hosted `{ provider, ... }`               |
 | `launchUrl`         | none           | a deep link to launch the app with, on the launch and on every relaunch                 |
 | `relaunch`          | `'per-test'`   | or `'per-worker'`                                                                       |
 | `onDeviceInUse`     | `'fail'`       | or `'reclaim'`. Leftovers carrying touchpress's own prefix are always reclaimed         |
@@ -74,17 +74,21 @@ A skipped test opens no session, because touchpress's `device` fixture is never 
 
 ## Running on a hosted device
 
-`cloud` moves a project off the local simulator or emulator and onto a hosted device. It is one key holding the whole target, so a project swaps providers in a single write and two providers can never merge into one. Credentials stay out of the config, because agent-device reads them from the environment.
+`target.provider` moves a project off the local simulator or emulator and onto a hosted device. `target` is one key holding the whole target, so a project swaps providers in a single write and two providers can never merge into one. Credentials stay out of the config, because agent-device reads them from the environment.
 
 ```ts
 use: {
   platform: 'android',
-  deviceName: 'Google Pixel 8',
-  cloud: { provider: 'browserstack', app: 'bs://a1b2c3', osVersion: '14.0' },
+  target: {
+    provider: 'browserstack',
+    name: 'Google Pixel 8',
+    app: 'bs://a1b2c3',
+    osVersion: '14.0',
+  },
 }
 ```
 
-What `deviceName` selects, what preflight can check, and which local behaviours stop applying all depend on the provider. See [Cloud devices](https://github.com/wobsoriano/touchpress/blob/main/docs/cloud.md).
+What `target.name` selects, what preflight can check, and which local behaviours stop applying all depend on the provider. See [Cloud devices](https://github.com/wobsoriano/touchpress/blob/main/docs/cloud.md).
 
 ## How long one action waits
 
@@ -122,12 +126,12 @@ Ambiguity is still ready. The gate asks whether the bundle loaded, not whether a
 
 ## One device per worker
 
-`deviceName` as a string, or `deviceName` omitted, serves worker slot 0 only. Two workers pointed at one device would both try to claim it, and because leftovers carrying touchpress's own prefix are always reclaimed, the second worker would close the first worker's live session mid-test. That is a configuration error rather than a race, and it fails at worker start.
+`target.name` as a string, or `target` omitted, serves worker slot 0 only. Two workers pointed at one device would both try to claim it, and because leftovers carrying touchpress's own prefix are always reclaimed, the second worker would close the first worker's live session mid-test. That is a configuration error rather than a race, and it fails at worker start.
 
-To run more than one worker, give `deviceName` an array with one entry per worker.
+To run more than one worker, give `target.name` an array with one entry per worker.
 
 ```ts
-use: { platform: 'ios', deviceName: ['iPhone 17 Pro', 'iPhone 17 Pro Max'] }
+use: { platform: 'ios', target: { name: ['iPhone 17 Pro', 'iPhone 17 Pro Max'] } }
 ```
 
 ## Timeouts

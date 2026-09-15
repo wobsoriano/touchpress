@@ -31,7 +31,7 @@ export type Device = CoreDevice & AiDevice;
 export type { AiModel, AiOptions } from './ai/options.ts';
 export type { ActOptions, AiDevice, ExtractOptions, ExtractSchema } from './ai/device.ts';
 
-export type { CloudOptions, ReadyQuery, Target } from './core/config.ts';
+export type { ReadyQuery, Target, TargetOptions } from './core/config.ts';
 export type { BackOptions, FilterOptions, Keyboard, Locator, TypeOptions } from './core/device.ts';
 export type { Filter, Query, Role, TextMatch } from './core/query.ts';
 export type { Platform, Rect, Screen, ScreenNode } from './core/screen.ts';

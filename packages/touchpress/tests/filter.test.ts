@@ -154,7 +154,7 @@ test('locator.filter appends to the query and leaves the locator it came from al
     options: parseDeviceOptions({
       platform: 'ios',
       app: 'com.wobsoriano.awesometodo',
-      deviceName: 'iPhone 17 Pro Max',
+      target: { name: 'iPhone 17 Pro Max' },
       readyWhen: { text: 'GET STARTED' },
       launchTimeout: 1000,
       actionTimeout: 600,

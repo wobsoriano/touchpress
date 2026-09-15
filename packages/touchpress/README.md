@@ -48,8 +48,8 @@ export default defineConfig<TouchpressOptions>({
     readyWhen: { testId: 'home' },
   },
   projects: [
-    { name: 'ios', use: { platform: 'ios', deviceName: 'iPhone 17 Pro Max' } },
-    { name: 'android', use: { platform: 'android', deviceName: 'Pixel 7 API 34' } },
+    { name: 'ios', use: { platform: 'ios', target: { name: 'iPhone 17 Pro Max' } } },
+    { name: 'android', use: { platform: 'android', target: { name: 'Pixel 7 API 34' } } },
   ],
 });
 ```

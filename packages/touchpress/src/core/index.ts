@@ -24,11 +24,11 @@ export type { Check, CheckName, Verdict } from './checks.ts';
 
 export { deviceNameForSlot, parseDeviceOptions, TOUCHPRESS_DEFAULTS } from './config.ts';
 export type {
-  CloudOptions,
   DeviceChoice,
   ReadyQuery,
   ResolvedOptions,
   Target,
+  TargetOptions,
   TouchpressOptions,
 } from './config.ts';
 
