@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createAgentDeviceClient, normalizeAgentDeviceError } from 'agent-device';
+import type { Target } from '../core/config.ts';
 import type {
   BackMode,
   Binding,
@@ -18,10 +19,60 @@ import type { PinnedRef, RawSnapshot } from '../core/screen.ts';
 
 /** agent-device's root entry exports values only, so the client type is derived here and nowhere else. */
 type Client = ReturnType<typeof createAgentDeviceClient>;
+type ClientConfig = NonNullable<Parameters<typeof createAgentDeviceClient>[0]>;
 
 /** `full` is explicit because a digest-level response omits `nodes`, and the whole library matches on nodes. */
-export function createClient(): Client {
-  return createAgentDeviceClient({ responseLevel: 'full' });
+export function createClient(target: Target): Client {
+  return createAgentDeviceClient({ responseLevel: 'full', ...clientConfigFor(target) });
+}
+
+/**
+ * The one place a `Target` becomes agent-device's own vocabulary. No credential passes through
+ * here, because agent-device reads every one of them from the environment itself.
+ *
+ * A key is left out rather than set to `undefined`, so what reaches agent-device is only what the
+ * project actually configured.
+ */
+export function clientConfigFor(target: Target): ClientConfig {
+  switch (target.kind) {
+    case 'local':
+      return {};
+    case 'browserstack':
+      return {
+        leaseProvider: 'browserstack',
+        providerApp: target.app,
+        providerOsVersion: target.osVersion,
+        ...(target.project === null ? {} : { providerProject: target.project }),
+        ...(target.build === null ? {} : { providerBuild: target.build }),
+        ...(target.sessionName === null ? {} : { providerSessionName: target.sessionName }),
+        ...(target.orientation === null ? {} : { providerDeviceOrientation: target.orientation }),
+        ...(target.geoLocation === null ? {} : { providerGeoLocation: target.geoLocation }),
+        ...(target.timezone === null ? {} : { providerTimezone: target.timezone }),
+        ...(target.language === null ? {} : { providerLanguage: target.language }),
+        ...(target.locale === null ? {} : { providerLocale: target.locale }),
+        ...(target.networkProfile === null
+          ? {}
+          : { providerNetworkProfile: target.networkProfile }),
+        ...(target.customNetwork === null ? {} : { providerCustomNetwork: target.customNetwork }),
+        ...(target.noResignApp ? { providerNoResignApp: true } : {}),
+      };
+    case 'aws-device-farm':
+      return {
+        leaseProvider: 'aws-device-farm',
+        awsProjectArn: target.projectArn,
+        awsDeviceArn: target.deviceArn,
+        ...(target.appArn === null ? {} : { awsAppArn: target.appArn }),
+        ...(target.region === null ? {} : { awsRegion: target.region }),
+        ...(target.interactionMode === null ? {} : { awsInteractionMode: target.interactionMode }),
+        ...(target.sessionName === null ? {} : { providerSessionName: target.sessionName }),
+      };
+    case 'limrun':
+      return { leaseProvider: 'limrun' };
+    default: {
+      const never: never = target;
+      throw new Error(`unhandled target ${JSON.stringify(never)}`);
+    }
+  }
 }
 
 /** The seam a test observes instead of spawning a process. */
@@ -75,6 +126,9 @@ export function createAgentDeviceDriver(
 
     open: (request: OpenRequest): Promise<Binding> =>
       run('open', async () => {
+        if (request.install !== null) {
+          await client.apps.install({ ...where, app: request.app, appPath: request.install });
+        }
         const result = await client.apps.open({
           ...where,
           app: request.app,
@@ -168,7 +222,8 @@ export function createAgentDeviceDriver(
     resetKeychain: (): Promise<void> =>
       run('resetKeychain', async () => {
         // Android keeps an app's keystore entries with its data, so clearing the app already removed them.
-        if (selection.platform !== 'ios') return;
+        // `simctl` reaches a simulator on this machine and nothing else, so a hosted device has no reset.
+        if (selection.platform !== 'ios' || selection.target.kind !== 'local') return;
         // `booted` is simctl's own alias for the one running simulator, for a session opened
         // by a daemon that did not report the identifier.
         await runCommand('xcrun', ['simctl', 'keychain', udid ?? 'booted', 'reset']);

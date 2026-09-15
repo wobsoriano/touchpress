@@ -125,12 +125,17 @@ export async function openSession(input: OpenSessionInput): Promise<DeviceSessio
   const { options, sink } = input;
   const name = sessionName(options, input.scope, input.slot);
   const deviceName = deviceNameForSlot(options, input.slot);
-  const driver = input.createDriver(name, { platform: options.platform, name: deviceName });
+  const driver = input.createDriver(name, {
+    platform: options.platform,
+    name: deviceName,
+    target: options.target,
+  });
   const deadline = Date.now() + options.launchTimeout;
 
   await driver.close(name);
   const binding = await openWithRecovery(driver, options, name, deviceName);
   sink.note('device', `${binding.deviceLabel} (${binding.platform}) session ${binding.session}`);
+  if (options.target.kind !== 'local') sink.note('cloud', options.target.kind);
 
   const session = createSession(driver, options, name, binding);
   await sink.step(
@@ -149,7 +154,14 @@ async function openWithRecovery(
   name: string,
   deviceName: string | null,
 ): Promise<Binding> {
-  const request = { app: options.app, relaunch: true, url: options.launchUrl };
+  // Every retry below reuses this request, install included. That is right, because a reclaimed
+  // or rebound session released its instance and the next open lands on one with no app on it.
+  const request = {
+    app: options.app,
+    relaunch: true,
+    url: options.launchUrl,
+    install: options.target.kind === 'limrun' ? options.target.install : null,
+  };
   try {
     return await driver.open(request);
   } catch (error) {
@@ -256,7 +268,9 @@ function createSession(
   function relaunch(sink: ActionSink): Promise<void> {
     return sink.step(renderTitle({ kind: 'relaunch', app: options.app }), async () => {
       // Relaunching with the session's own selection is what keeps `open` legal on an already-bound session.
-      await run(() => driver.open({ app: options.app, relaunch: true, url: options.launchUrl }));
+      await run(() =>
+        driver.open({ app: options.app, relaunch: true, url: options.launchUrl, install: null }),
+      );
       if (options.dismissDevOverlay) await run(() => driver.dismissDevOverlay());
       await awaitReady(Date.now() + options.launchTimeout);
     });
@@ -280,6 +294,8 @@ function createSession(
       sink.step(renderTitle({ kind: 'clear-keychain' }), async () => {
         if (options.platform === 'android')
           sink.note('keychain', 'nothing to reset on Android, clearing state covers the keystore');
+        else if (options.target.kind !== 'local')
+          sink.note('keychain', 'keychain reset needs a local iOS simulator, nothing was reset');
         await run((one) => one.resetKeychain());
       }),
     dismissDevOverlay: () => run(() => driver.dismissDevOverlay()),

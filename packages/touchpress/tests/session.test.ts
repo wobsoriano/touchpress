@@ -13,7 +13,7 @@ type ParseInput = Partial<TouchpressOptions> & { actionTimeout?: number };
 const options: ParseInput = {
   platform: 'ios',
   app: 'com.wobsoriano.awesometodo',
-  deviceName: 'iPhone 17 Pro Max',
+  target: { name: 'iPhone 17 Pro Max' },
   readyWhen: { text: 'GET STARTED' },
   launchTimeout: 1000,
   actionTimeout: 600,
@@ -351,7 +351,7 @@ test('a fill confirms against the node it wrote when the write changes the label
   driver.contentsBecomeLabel = true;
   const session = await open(driver, {
     platform: 'android',
-    deviceName: 'Pixel 9',
+    target: { name: 'Pixel 9' },
     readyWhen: { text: 'Sign in' },
   });
   const app = createDevice(session, silentSink);
@@ -369,7 +369,7 @@ test('a fill whose label follows its contents still re-dispatches and still repo
     actionTimeout: 4000,
     settleQuietMs: 20,
     platform: 'android',
-    deviceName: 'Pixel 9',
+    target: { name: 'Pixel 9' },
     readyWhen: { text: 'Sign in' },
   });
   const app = createDevice(session, silentSink);
@@ -467,7 +467,7 @@ test('a fill confirms on one dispatch when an Android field shares its identifie
   driver.contentsBecomeLabel = true;
   const session = await open(driver, {
     platform: 'android',
-    deviceName: 'Pixel 9',
+    target: { name: 'Pixel 9' },
     readyWhen: { text: 'Sign in' },
   });
   const app = createDevice(session, silentSink);
@@ -576,7 +576,7 @@ function openAndroidLogin(driver: FakeDriver) {
   driver.contentsBecomeLabel = true;
   return open(driver, {
     platform: 'android',
-    deviceName: 'Pixel 9',
+    target: { name: 'Pixel 9' },
     readyWhen: { text: 'Sign in' },
     actionTimeout: 4000,
     settleQuietMs: 20,
@@ -772,4 +772,76 @@ test('textContent refuses an ambiguous locator and lists every match', async () 
   expect(error.info.kind).toBe('strict-mode');
   expect(error.message).toContain(`@e12 [text] "Explore"`);
   expect(error.message).toContain(`@e35 [button] "Explore"`);
+});
+
+test('a Limrun session installs the app on its first open and not on the relaunch', async () => {
+  const driver = createFakeDriver();
+  const session = await open(driver, {
+    target: { provider: 'limrun', install: './build/app.app' },
+  });
+  await session.relaunch(silentSink);
+  expect(driver.calls.filter((call) => call.startsWith('open'))).toEqual([
+    'open com.wobsoriano.awesometodo relaunch=true install=./build/app.app',
+    'open com.wobsoriano.awesometodo relaunch=true',
+  ]);
+});
+
+test('a cloud session records the provider it opened on', async () => {
+  const notes: string[] = [];
+  const sink = {
+    ...silentSink,
+    note: (key: string, value: string) => notes.push(`${key} ${value}`),
+  };
+  await openSession({
+    options: parseDeviceOptions({
+      ...options,
+      target: { provider: 'limrun', install: './build/app.app' },
+    }),
+    slot: 0,
+    scope: 'ios',
+    sink,
+    createDriver: () => createFakeDriver(),
+  });
+  expect(notes).toContain('cloud limrun');
+});
+
+test('a cloud session resets no keychain and says why', async () => {
+  const notes: string[] = [];
+  const sink = {
+    ...createRecordingSink(),
+    note: (key: string, value: string) => notes.push(`${key} ${value}`),
+  };
+  const driver = createFakeDriver();
+  const session = await open(driver, {
+    platform: 'android',
+    target: {
+      provider: 'browserstack',
+      name: 'Google Pixel 8',
+      app: 'bs://abc',
+      osVersion: '14.0',
+    },
+  });
+  driver.calls.length = 0;
+
+  await session.clearKeychain(sink);
+
+  expect(driver.calls).toEqual(['resetKeychain']);
+  expect(notes).toEqual([
+    'keychain nothing to reset on Android, clearing state covers the keystore',
+  ]);
+});
+
+test('an iOS keychain reset on a hosted device is reported as the no-op it is', async () => {
+  const notes: string[] = [];
+  const sink = {
+    ...createRecordingSink(),
+    note: (key: string, value: string) => notes.push(`${key} ${value}`),
+  };
+  const session = await open(createFakeDriver(), {
+    target: { provider: 'browserstack', name: 'iPhone 15', app: 'bs://abc', osVersion: '17' },
+  });
+
+  await session.clearKeychain(sink);
+
+  expect(notes).toEqual(['keychain keychain reset needs a local iOS simulator, nothing was reset']);
 });

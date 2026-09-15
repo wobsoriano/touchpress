@@ -26,7 +26,7 @@ export const setupTest = base.extend<object, TouchpressOptions & AiOptions>({
   platform: [undefined, { option: true, scope: 'worker' }],
   app: [undefined, { option: true, scope: 'worker' }],
   readyWhen: [undefined, { option: true, scope: 'worker' }],
-  deviceName: [undefined, { option: true, scope: 'worker' }],
+  target: [undefined, { option: true, scope: 'worker' }],
   launchUrl: [undefined, { option: true, scope: 'worker' }],
   relaunch: [TOUCHPRESS_DEFAULTS.relaunch, { option: true, scope: 'worker' }],
   onDeviceInUse: [TOUCHPRESS_DEFAULTS.onDeviceInUse, { option: true, scope: 'worker' }],
@@ -58,7 +58,7 @@ export const test = setupTest.extend<{ device: Device & AiDevice }, { session: D
         platform,
         app,
         readyWhen,
-        deviceName,
+        target,
         launchUrl,
         relaunch,
         onDeviceInUse,
@@ -75,7 +75,7 @@ export const test = setupTest.extend<{ device: Device & AiDevice }, { session: D
         platform,
         app,
         readyWhen,
-        deviceName,
+        target,
         launchUrl,
         relaunch,
         onDeviceInUse,
@@ -95,7 +95,8 @@ export const test = setupTest.extend<{ device: Device & AiDevice }, { session: D
         slot: workerInfo.parallelIndex,
         scope: workerInfo.project.name,
         sink: playwrightSink(),
-        createDriver: (name, selection) => createAgentDeviceDriver(createClient(), name, selection),
+        createDriver: (name, selection) =>
+          createAgentDeviceDriver(createClient(selection.target), name, selection),
       });
       await use(session);
       await session.close('worker-exit');

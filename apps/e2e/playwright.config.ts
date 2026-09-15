@@ -21,11 +21,11 @@ const aiModel =
 // is not the one on a developer's machine. Preflight turns a mismatch into one readable failure.
 const ios = {
   platform: 'ios',
-  deviceName: process.env['TOUCHPRESS_IOS_DEVICE'] ?? 'iPhone 17 Pro Max',
+  target: { name: process.env['TOUCHPRESS_IOS_DEVICE'] ?? 'iPhone 17 Pro Max' },
 } as const;
 const android = {
   platform: 'android',
-  deviceName: process.env['TOUCHPRESS_ANDROID_DEVICE'] ?? 'Expo API 36',
+  target: { name: process.env['TOUCHPRESS_ANDROID_DEVICE'] ?? 'Expo API 36' },
 } as const;
 
 export default defineConfig<TouchpressOptions>({

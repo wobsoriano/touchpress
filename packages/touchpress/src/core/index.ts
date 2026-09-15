@@ -23,7 +23,14 @@ export { describeCheck, evaluate } from './checks.ts';
 export type { Check, CheckName, Verdict } from './checks.ts';
 
 export { deviceNameForSlot, parseDeviceOptions, TOUCHPRESS_DEFAULTS } from './config.ts';
-export type { DeviceChoice, ReadyQuery, ResolvedOptions, TouchpressOptions } from './config.ts';
+export type {
+  DeviceChoice,
+  ReadyQuery,
+  ResolvedOptions,
+  Target,
+  TargetOptions,
+  TouchpressOptions,
+} from './config.ts';
 
 export type {
   BackMode,

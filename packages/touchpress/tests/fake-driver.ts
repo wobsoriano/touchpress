@@ -102,7 +102,8 @@ export function createFakeDriver(options?: {
 
     open: (request: OpenRequest): Promise<Binding> => {
       const url = request.url === null ? '' : ` url=${request.url}`;
-      calls.push(`open ${request.app} relaunch=${String(request.relaunch)}${url}`);
+      const install = request.install === null ? '' : ` install=${request.install}`;
+      calls.push(`open ${request.app} relaunch=${String(request.relaunch)}${url}${install}`);
       const failure = openOutcomes.shift();
       if (failure !== undefined)
         return Promise.reject(new TouchpressError({ kind: 'driver', command: 'open', failure }));
