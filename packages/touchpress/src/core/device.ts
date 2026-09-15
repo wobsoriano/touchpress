@@ -69,11 +69,7 @@ export type Keyboard = {
 };
 
 export type Device = {
-  /**
-   * The resolved configuration this device runs under. A spec reads `platform`
-   * off it under either runner, and a matcher whose runner gives it no timeout
-   * reads `expectTimeout`.
-   */
+  /** The resolved configuration this device runs under. A spec reads `platform` off it under either runner. */
   readonly options: ResolvedOptions;
   /** Matches a node's accessibility name or its value. */
   getByText(text: string | RegExp, options?: TextOptions): Locator;

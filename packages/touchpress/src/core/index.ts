@@ -27,6 +27,7 @@ export {
   DEFAULT_EXPECT_TIMEOUT_MS,
   deviceNameForSlot,
   parseDeviceOptions,
+  parseExpectTimeout,
   TOUCHPRESS_DEFAULTS,
 } from './config.ts';
 export type { DeviceChoice, ReadyQuery, ResolvedOptions, TouchpressOptions } from './config.ts';

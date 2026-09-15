@@ -5,6 +5,7 @@ import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_EXPECT_TIMEOUT_MS,
   parseDeviceOptions,
+  parseExpectTimeout,
   TOUCHPRESS_DEFAULTS,
 } from '../core/config.ts';
 import { createDevice, type Device } from '../core/device.ts';
@@ -95,7 +96,6 @@ export function createTest(createDriver: DriverFactory) {
         evidence,
         sessionPrefix,
         actionTimeout,
-        expectTimeout,
         outputDir,
       },
       use,
@@ -114,7 +114,6 @@ export function createTest(createDriver: DriverFactory) {
         evidence,
         sessionPrefix,
         actionTimeout,
-        expectTimeout,
       });
       const scope = task.file.projectName ?? '';
       const slot = workerSlot();
@@ -146,8 +145,9 @@ export function createTest(createDriver: DriverFactory) {
     ],
 
     device: [
-      async ({ task, annotate, session, aiModel, outputDir }, use) => {
+      async ({ task, annotate, session, aiModel, outputDir, expectTimeout }, use) => {
         const identity = identify(task);
+        const matcherTimeout = parseExpectTimeout(expectTimeout);
         const policy = session.options.evidence;
         let captured = false;
         // Vitest closes a test's annotations the moment its body ends, so evidence is
@@ -172,7 +172,13 @@ export function createTest(createDriver: DriverFactory) {
         const core = createDevice(session, sink);
         const device = withAi(core, session, sink, aiModel);
         // A locator carries the core device and a spec holds the AI one, so both resolve to this test.
-        const current = { sink, test: identity, screenshots: 0, failed };
+        const current = {
+          sink,
+          test: identity,
+          expectTimeout: matcherTimeout,
+          screenshots: 0,
+          failed,
+        };
         bindRunning(core, current);
         bindRunning(device, current);
 

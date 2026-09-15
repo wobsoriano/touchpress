@@ -17,7 +17,6 @@ function opens(): number {
 
 test('the first test opens the session once and skips the relaunch', async ({ device }) => {
   expect(opens()).toBe(1);
-  expect(device.options.expectTimeout).toBe(7000);
   expect(device.options.actionTimeout).toBe(500);
 });
 

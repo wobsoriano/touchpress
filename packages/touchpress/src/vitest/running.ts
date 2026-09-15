@@ -4,12 +4,14 @@ import type { VitestSink } from './sink.ts';
 
 /**
  * What a matcher needs from the test that built its target and cannot reach
- * through `this`, which under Vitest has no `annotate` and no output
- * directory. The `device` fixture binds this per test and clears it after.
+ * through `this`, which under Vitest has no `annotate`, no output directory
+ * and no timeout. The `device` fixture binds this per test and clears it after.
  */
 export type RunningTest = {
   readonly sink: VitestSink;
   readonly test: TestIdentity;
+  /** What a matcher waits when the call passes no `{ timeout }`. The `expectTimeout` option, validated. */
+  readonly expectTimeout: number;
   /** Unnamed screenshots in one test are numbered from 1, so two never share a baseline. */
   screenshots: number;
   /**

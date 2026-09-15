@@ -1,5 +1,5 @@
 import { expect, test } from 'vite-plus/test';
-import { deviceNameForSlot, parseDeviceOptions } from '../src/core/config.ts';
+import { deviceNameForSlot, parseDeviceOptions, parseExpectTimeout } from '../src/core/config.ts';
 import { sessionName } from '../src/core/session.ts';
 
 const minimal = { platform: 'ios', app: 'com.example.app', readyWhen: { text: 'GET STARTED' } };
@@ -49,11 +49,14 @@ test("Playwright's own actionTimeout drives an action, and its zero reads as uns
   expect(() => parseDeviceOptions({ ...minimal, actionTimeout: -1 })).toThrow(/use\.actionTimeout/);
 });
 
-test("Playwright's own expect.timeout drives a matcher, and its zero reads as unset", () => {
-  expect(parseDeviceOptions(minimal).expectTimeout).toBe(5000);
-  expect(parseDeviceOptions({ ...minimal, expectTimeout: 7000 }).expectTimeout).toBe(7000);
-  expect(parseDeviceOptions({ ...minimal, expectTimeout: 0 }).expectTimeout).toBe(5000);
-  expect(() => parseDeviceOptions({ ...minimal, expectTimeout: -1 })).toThrow(/use\.expectTimeout/);
+test("the Vitest adapter's expectTimeout follows actionTimeout's rule and stays off the device options", () => {
+  expect(parseExpectTimeout(undefined)).toBe(5000);
+  expect(parseExpectTimeout(7000)).toBe(7000);
+  expect(parseExpectTimeout(0)).toBe(5000);
+  expect(() => parseExpectTimeout(-1)).toThrow(/use\.expectTimeout/);
+  expect(Object.keys(parseDeviceOptions({ ...minimal, expectTimeout: 7000 }))).not.toContain(
+    'expectTimeout',
+  );
 });
 
 test('readyWhen accepts text, testId, and role forms', () => {

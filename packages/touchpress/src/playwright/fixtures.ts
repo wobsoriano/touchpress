@@ -87,9 +87,8 @@ export function createTest(createDriver: DriverFactory) {
           dismissDevOverlay,
           evidence,
           sessionPrefix,
-          // Playwright's own options rather than touchpress's, so they are read off the project.
+          // Playwright's own option rather than touchpress's, so it is read off the project.
           actionTimeout: workerInfo.project.use.actionTimeout,
-          expectTimeout: projectExpectTimeout(),
         });
         const session = await openSession({
           options,
@@ -125,25 +124,3 @@ export function createTest(createDriver: DriverFactory) {
 }
 
 export const test = createTest(agentDeviceDriver);
-
-/**
- * Playwright hands the merged `expect.timeout` to a matcher as `this.timeout`
- * and exposes it nowhere public. The test info that triggers the worker
- * fixture carries it on its internal project, so it is read from there as a
- * raw value for the parser. A Playwright release that moves it leaves
- * `expectTimeout` at Playwright's own default, and the adapter's own suite
- * pins the read.
- */
-function projectExpectTimeout(): unknown {
-  let info: object;
-  try {
-    info = base.info();
-  } catch {
-    return undefined;
-  }
-  const internal: unknown = Reflect.get(info, '_projectInternal');
-  if (typeof internal !== 'object' || internal === null) return undefined;
-  const expect: unknown = Reflect.get(internal, 'expect');
-  if (typeof expect !== 'object' || expect === null) return undefined;
-  return Reflect.get(expect, 'timeout');
-}

@@ -99,8 +99,6 @@ export type ResolvedOptions = {
   readonly relaunch: 'per-test' | 'per-worker';
   readonly onDeviceInUse: 'fail' | 'reclaim';
   readonly actionTimeout: number;
-  /** What a matcher waits when the call passes no `{ timeout }`. */
-  readonly expectTimeout: number;
   readonly settleQuietMs: number;
   readonly launchTimeout: number;
   readonly dismissDevOverlay: boolean;
@@ -128,7 +126,7 @@ const ROLES: readonly Role[] = [
 
 /**
  * The config boundary. Options arrive as `unknown` because a project can omit
- * any of them, or be written in JavaScript, and because the two timeouts ride
+ * any of them, or be written in JavaScript, and because `actionTimeout` rides
  * along from the runner's own options. Every message names the key to fix.
  */
 export function parseDeviceOptions(raw: unknown): ResolvedOptions {
@@ -163,11 +161,6 @@ export function parseDeviceOptions(raw: unknown): ResolvedOptions {
       'actionTimeout',
       read(raw, 'actionTimeout'),
       DEFAULT_ACTION_TIMEOUT_MS,
-    ),
-    expectTimeout: parseTimeout(
-      'expectTimeout',
-      read(raw, 'expectTimeout'),
-      DEFAULT_EXPECT_TIMEOUT_MS,
     ),
     settleQuietMs: positive(
       'settleQuietMs',
@@ -205,14 +198,24 @@ function read(source: unknown, key: string): unknown {
 }
 
 /**
- * Under Playwright these are its own `use.actionTimeout` and `expect.timeout`,
- * not touchpress options. Playwright defaults `actionTimeout` to 0, which means
- * "no timeout" there and would mean "give up at once" here, so 0 falls back the
- * way an unset value does.
+ * Under Playwright `actionTimeout` is its own `use.actionTimeout`, not a
+ * touchpress option. Playwright defaults it to 0, which means "no timeout"
+ * there and would mean "give up at once" here, so 0 falls back the way an
+ * unset value does.
  */
 function parseTimeout(field: string, value: unknown, fallback: number): number {
   if (value === 0) return fallback;
   return positive(field, value, fallback);
+}
+
+/**
+ * The Vitest adapter's `expectTimeout` option, by the rule `actionTimeout`
+ * follows. It is not part of `ResolvedOptions` because Playwright hands a
+ * matcher its timeout as `this.timeout` and exposes it nowhere else, so only
+ * the runner with no assertion timeout of its own carries one.
+ */
+export function parseExpectTimeout(value: unknown): number {
+  return parseTimeout('expectTimeout', value, DEFAULT_EXPECT_TIMEOUT_MS);
 }
 
 function parseReadyWhen(raw: unknown): Query {

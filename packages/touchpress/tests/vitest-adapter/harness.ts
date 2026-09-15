@@ -28,8 +28,17 @@ export const test = createTest(() => driver).extend({
   outputDir,
 });
 
+/** Every `open` the driver saw. A session open and a relaunch are both one. */
 export function opens(): number {
   return driver.calls.filter((call) => call.startsWith('open ')).length;
+}
+
+/**
+ * How many sessions the worker opened. `openSession` reclaims by name before
+ * its `open`, so the reclaim close is what tells a session open from a relaunch.
+ */
+export function sessionOpens(): number {
+  return driver.calls.filter((call) => call === 'close touchpress-vitest-adapter-0').length;
 }
 
 export function screenshots(): string[] {

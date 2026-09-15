@@ -7,7 +7,6 @@ export default defineConfig<TouchpressOptions>({
   testMatch: /adapter\.spec\.mts/,
   workers: 1,
   timeout: 20_000,
-  expect: { timeout: 7000 },
   reporter: [['json']],
   use: {
     app: 'com.example.app',

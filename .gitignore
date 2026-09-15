@@ -2,7 +2,6 @@ node_modules
 dist
 test-results
 touchpress-results
-*-snapshots/touchpress-vitest-adapter-*
 playwright-report
 .expo
 ios

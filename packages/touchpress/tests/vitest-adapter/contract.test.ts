@@ -1,21 +1,38 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { beforeAll } from 'vitest';
 import { defineContract } from '../adapter-contract.ts';
-import { driver, expect, opens, outputDir, screenshots, test } from './harness.ts';
+import { driver, expect, opens, outputDir, screenshots, sessionOpens, test } from './harness.ts';
 
 const here = fileURLToPath(import.meta.url);
 
-test('the first test opens the session once and skips the relaunch', async ({ device, task }) => {
-  expect(opens()).toBe(1);
-  expect(driver.calls).toContain('close touchpress-vitest-adapter-0');
-  expect(device.options.expectTimeout).toBe(400);
+// Vitest orders spec files as it likes, so what this file asserts is the delta it caused. A
+// file that runs first pays the session open and a later one pays a relaunch, one `open` either way.
+let opensBefore = 0;
+beforeAll(() => {
+  opensBefore = opens();
+});
+
+test('the first test costs one open, on the one session this worker holds', async ({
+  device,
+  task,
+}) => {
+  expect(sessionOpens()).toBe(1);
+  expect(opens()).toBe(opensBefore + 1);
   expect(task.file.projectName).toBe('vitest-adapter');
-  await Promise.resolve();
+  const started = Date.now();
+  await expect(device.getByText('Sign out'))
+    .toBeVisible()
+    .catch(() => undefined);
+  const waited = Date.now() - started;
+  expect(waited).toBeGreaterThanOrEqual(400);
+  expect(waited).toBeLessThan(1500);
 });
 
 test('the second test relaunches on the way in, on the same session', async () => {
-  expect(opens()).toBe(2);
+  expect(sessionOpens()).toBe(1);
+  expect(opens()).toBe(opensBefore + 2);
   await Promise.resolve();
 });
 
@@ -92,6 +109,7 @@ test('a failure touchpress never saw leaves its evidence on disk, and a retry re
   }
   expect(retry).toBe(1);
   expect(opens()).toBe(attemptsBefore + 1);
+  expect(sessionOpens()).toBe(1);
   const first = failingDir(task.name);
   expect(screenshots()).toContain(join(first, 'screen.png'));
   expect(existsSync(join(first, 'screen.png'))).toBe(true);

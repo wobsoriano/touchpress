@@ -1,5 +1,6 @@
 import { expect as vitestExpect, type ExpectStatic, type MatcherState } from 'vitest';
 import type { Check, CheckName } from '../core/checks.ts';
+import { DEFAULT_EXPECT_TIMEOUT_MS } from '../core/config.ts';
 import type { Device, Locator } from '../core/device.ts';
 import type { ProbeResult } from '../core/probe.ts';
 import { textMatch } from '../core/query.ts';
@@ -67,10 +68,11 @@ function describe(value: unknown): string {
 
 /**
  * A Vitest matcher's `this` carries no timeout, so the budget comes off the
- * locator's own device. `this.isNot` selects the predicate the poll waits for,
- * which is what makes `.not.toBeVisible()` wait for a control to leave. It is
- * chai's `negate` flag, which is `undefined` rather than `false` on a plain
- * assertion, so it is read as a strict boolean here and nowhere else.
+ * running test that built the target. `this.isNot` selects the predicate the
+ * poll waits for, which is what makes `.not.toBeVisible()` wait for a control
+ * to leave. It is chai's `negate` flag, which is `undefined` rather than
+ * `false` on a plain assertion, so it is read as a strict boolean here and
+ * nowhere else.
  */
 function negated(state: MatcherState): boolean {
   return state.isNot === true;
@@ -84,11 +86,12 @@ async function runCheck(
 ): Promise<MatcherResult> {
   const locator = locatorOf(received, check.name);
   const negate = negated(state);
+  const current = runningOf(locator);
   const result = await locator.expect(check, {
     negate,
-    timeoutMs: timeout ?? locator.device.options.expectTimeout,
+    timeoutMs: timeout ?? current?.expectTimeout ?? DEFAULT_EXPECT_TIMEOUT_MS,
   });
-  return toMatcherResult(result, negate, runningOf(locator));
+  return toMatcherResult(result, negate, current);
 }
 
 function retrying(
@@ -155,7 +158,6 @@ vitestExpect.extend({
     extra?: ScreenshotOptions,
   ) {
     const target = targetOf(received, 'toHaveScreenshot');
-    const device = 'query' in target ? target.device : target;
     const options = (typeof nameOrOptions === 'string' ? extra : nameOrOptions) ?? {};
     const current = runningFor(target);
     const negate = negated(this);
@@ -168,7 +170,7 @@ vitestExpect.extend({
       baseline: baselinePath(name, current.test),
       options,
       negate,
-      timeoutMs: options.timeout ?? device.options.expectTimeout,
+      timeoutMs: options.timeout ?? current.expectTimeout,
       policy: vitestBaseline(this.snapshotState.snapshotUpdateState),
       sink: current.sink,
     });
