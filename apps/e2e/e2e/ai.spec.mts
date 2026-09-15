@@ -1,4 +1,4 @@
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 import { z } from 'zod';
 
 test.skip(!process.env['AI_MODEL'], 'set AI_MODEL and ANTHROPIC_API_KEY or AI_GATEWAY_API_KEY');

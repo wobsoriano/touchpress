@@ -1,10 +1,10 @@
 # Basics
 
-A touchpress test is a Playwright test. You import `test` and `expect` from `touchpress` instead of from `@playwright/test`, and you get one extra fixture called `device`.
+A touchpress test is a Playwright test. You import `test` and `expect` from `touchpress/playwright` instead of from `@playwright/test`, and you get one extra fixture called `device`.
 
 ```ts
 // e2e/home.spec.ts
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 
 test('the signed-out home screen offers a way in', async ({ device }) => {
   await expect(device.getByRole('text', { name: 'Welcome' })).toHaveText('Welcome', {
@@ -155,7 +155,8 @@ The agent-device CLI equivalent is `agent-device screenshot ./card.png`, which a
 
 ```ts
 // e2e/preflight.setup.mts
-import { preflight, setupTest } from 'touchpress';
+import { preflight } from 'touchpress';
+import { setupTest } from 'touchpress/playwright';
 
 setupTest(
   'the project names a booted device',

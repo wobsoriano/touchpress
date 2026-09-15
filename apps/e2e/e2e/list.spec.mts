@@ -1,4 +1,4 @@
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 
 test('a row far down the list is scrolled into view', async ({ device }) => {
   await device.getByTestId('list-link').tap();

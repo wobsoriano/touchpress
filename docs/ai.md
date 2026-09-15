@@ -3,7 +3,7 @@
 Two methods on the `device` fixture take a model. `act` drives the app from an instruction in English. `extract` asks one question about the screen and returns a typed answer.
 
 ```ts
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 import { z } from 'zod';
 
 test('sign in', async ({ device }) => {

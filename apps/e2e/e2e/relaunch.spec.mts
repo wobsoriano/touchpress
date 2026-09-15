@@ -1,4 +1,4 @@
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 
 test('a test can leave the app signed in on the profile', async ({ device }) => {
   await device.getByTestId('sign-in-link').tap();

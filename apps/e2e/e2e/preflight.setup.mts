@@ -1,4 +1,5 @@
-import { preflight, setupTest } from 'touchpress';
+import { preflight } from 'touchpress';
+import { setupTest } from 'touchpress/playwright';
 
 // `setupTest` carries touchpress's options and none of its fixtures. Touchpress's `test` would open a
 // device session through its auto `device` fixture, before preflight has checked the device.

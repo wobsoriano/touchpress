@@ -26,6 +26,7 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./core": "./dist/core/index.mjs",
+    "./playwright": "./dist/playwright/index.mjs",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -56,10 +57,17 @@
   },
   "peerDependencies": {
     "@playwright/test": ">=1.63",
-    "ai": "^6.0.0 || ^7.0.0"
+    "ai": "^6.0.0 || ^7.0.0",
+    "vitest": "^4.0.0 || ^5.0.0"
   },
   "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    },
     "ai": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },

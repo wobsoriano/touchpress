@@ -1,8 +1,8 @@
 /**
- * The runner-independent surface. No module under `core/` imports
- * `@playwright/test` or `agent-device`, and no agent-device type crosses this
- * line. The one exception is this entry's re-export of `preflight`, which needs
- * a concrete driver.
+ * The runner-independent surface, and the kit a third adapter is built from.
+ * No module reachable from here imports `@playwright/test`, `vitest`, `ai`, or
+ * `agent-device`, and no agent-device type crosses this line. `preflight` needs
+ * a concrete driver, so it lives on the root entry.
  */
 
 export { createDevice } from './device.ts';
@@ -49,9 +49,6 @@ export { TouchpressError } from './errors.ts';
 export type { ErrorInfo, ExpectedValue } from './errors.ts';
 
 export { captureEvidence, evidenceWanted } from './evidence.ts';
-
-export { preflight } from '../preflight.ts';
-export type { PreflightDevice, PreflightReport } from '../preflight.ts';
 
 export { formatFailure, probe } from './probe.ts';
 export type { ProbeOptions, ProbeResult, ProbeTarget } from './probe.ts';

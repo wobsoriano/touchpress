@@ -16,7 +16,7 @@ Eight matchers, all on touchpress's own `expect`, all retrying, all accepting `{
 They carry Playwright's own matcher names, but they are typed by their first parameter, so they surface on a touchpress locator and on nothing else. Web locators are never mixed into the same `expect` here. `toHaveScreenshot` also takes the `device` itself, for a whole-screen comparison.
 
 ```ts
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 
 test('the wrong password is rejected without leaving the login screen', async ({ device }) => {
   await device.getByTestId('sign-in-link').tap();

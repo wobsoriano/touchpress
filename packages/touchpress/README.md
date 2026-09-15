@@ -6,7 +6,7 @@
 touchpress runs e2e tests for mobile apps on the Playwright test runner. It drives a booted simulator or emulator through [`agent-device`](https://agent-device.dev/).
 
 ```ts
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 
 test('the right credentials land on the profile', async ({ device }) => {
   await device.getByTestId('sign-in-link').tap();
@@ -38,7 +38,7 @@ pnpm add -D touchpress @playwright/test
 ```ts
 // playwright.config.ts
 import { defineConfig } from '@playwright/test';
-import type { TouchpressOptions } from 'touchpress';
+import type { TouchpressOptions } from 'touchpress/playwright';
 
 export default defineConfig<TouchpressOptions>({
   testDir: 'e2e',

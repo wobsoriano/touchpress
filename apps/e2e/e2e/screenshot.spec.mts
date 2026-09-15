@@ -1,4 +1,4 @@
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 
 test('the signed-out home screen looks the way it did', async ({ device }) => {
   await expect(device).toHaveScreenshot('home.png');

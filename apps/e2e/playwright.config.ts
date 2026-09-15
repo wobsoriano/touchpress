@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { anthropic } from '@ai-sdk/anthropic';
 import { defineConfig } from '@playwright/test';
-import type { TouchpressOptions } from 'touchpress';
+import type { TouchpressOptions } from 'touchpress/playwright';
 
 // AI_MODEL and the provider key live in a gitignored .env next to this file on a developer machine
 // and in the workflow's secrets on CI, so the file is optional.

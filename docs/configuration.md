@@ -5,7 +5,7 @@ Touchpress adds its own keys to Playwright's `use`. They are parsed once at work
 ```ts
 // playwright.config.ts
 import { defineConfig } from '@playwright/test';
-import type { TouchpressOptions } from 'touchpress';
+import type { TouchpressOptions } from 'touchpress/playwright';
 
 export default defineConfig<TouchpressOptions>({
   testDir: 'e2e',

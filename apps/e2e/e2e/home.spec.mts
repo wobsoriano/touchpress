@@ -1,4 +1,4 @@
-import { expect, test } from 'touchpress';
+import { expect, test } from 'touchpress/playwright';
 
 test('the signed-out home screen offers a way in', async ({ device }) => {
   await expect(device.getByRole('text', { name: 'Welcome' })).toHaveText('Welcome', {
