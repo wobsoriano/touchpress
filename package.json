@@ -2,7 +2,7 @@
   "name": "touchpress-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Workspace for touchpress, end-to-end testing for mobile apps with the Playwright test runner.",
+  "description": "Workspace for touchpress, end-to-end testing for mobile apps on Playwright or Vitest.",
   "type": "module",
   "scripts": {
     "check": "vp check",

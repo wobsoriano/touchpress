@@ -1,6 +1,6 @@
 # Basics
 
-A touchpress test is a Playwright test. You import `test` and `expect` from `touchpress/playwright` instead of from `@playwright/test`, and you get one extra fixture called `device`.
+A touchpress test is a Playwright test or a Vitest test. You import `test` and `expect` from `touchpress/playwright` or from `touchpress/vitest` instead of from the runner, and you get one extra fixture called `device`. Everything on this page holds under both.
 
 ```ts
 // e2e/home.spec.ts
@@ -14,7 +14,7 @@ test('the signed-out home screen offers a way in', async ({ device }) => {
 });
 ```
 
-No browser is launched. `browser`, `context`, and `page` are still there because `test` extends Playwright's own, but they are lazy and nothing in touchpress names them.
+Under Playwright no browser is launched. `browser`, `context`, and `page` are still there because `test` extends Playwright's own, but they are lazy and nothing in touchpress names them.
 
 ## The `device` fixture
 
@@ -48,7 +48,7 @@ await device.relaunch();
 await device.dismissDevOverlay();
 ```
 
-Actions wait for their target the way Playwright actions do. Playwright's `use.actionTimeout` is the whole budget for one action, shared between waiting for the target and waiting for the screen to settle afterwards. Each action is one step in the list and HTML reporters.
+Actions wait for their target the way Playwright actions do. `actionTimeout`, Playwright's own `use.actionTimeout` or the Vitest key of that name, is the whole budget for one action, shared between waiting for the target and waiting for the screen to settle afterwards. Each action is one step in Playwright's list and HTML reporters, and one line of the `steps.txt` a failing Vitest test attaches.
 
 A fill step is titled by its locator and never by the text. The value goes in a nested step, added after the node is resolved, because the node's role decides how much may be printed. A field the platform marks secure, or one filled with `{ secret: true }`, reports a count.
 
@@ -173,3 +173,21 @@ setupTest(
 It returns `{ ok: true, device }` or `{ ok: false, problems }`, where every problem is one line ending in something to do about it. Run it as a Playwright setup project that the device projects depend on, so a missing simulator reads as one short failure rather than a launch timeout in every test.
 
 Give each platform its own setup project off this one spec. A setup project has a single `use`, so one shared project could only ever check one platform's device. [Configuration](configuration.md) shows the wiring.
+
+Under Vitest there is no setup project, so the same call runs from a `globalSetup` file, one per project.
+
+```ts
+// e2e/preflight.ios.ts
+import { preflight } from 'touchpress';
+
+export async function setup(): Promise<void> {
+  const report = await preflight({
+    platform: 'ios',
+    app: 'com.example.app',
+    readyWhen: { testId: 'home' },
+    deviceName: 'iPhone 17 Pro Max',
+  });
+  if (report.ok) return;
+  throw new Error(report.problems.join('\n'));
+}
+```

@@ -1,6 +1,6 @@
 # Assertions
 
-Eight matchers, all on touchpress's own `expect`, all retrying, all accepting `{ timeout }`, all working under `.not`.
+Eight matchers, all on touchpress's own `expect`, all retrying, all accepting `{ timeout }`, all working under `.not`. `touchpress/playwright` and `touchpress/vitest` each export that `expect`, and the matchers are the same under both.
 
 | matcher                           | asserts                                    |
 | --------------------------------- | ------------------------------------------ |
@@ -39,7 +39,7 @@ Two things fail the assertion whichever way you write it. An ambiguous locator i
 
 ## Timeouts
 
-Every matcher uses `expect.timeout` from the Playwright config unless the call passes its own.
+Every matcher uses `expect.timeout` from the Playwright config, or the `expectTimeout` key from the Vitest config, unless the call passes its own.
 
 ```ts
 await expect(device.getByTestId('signing-in')).toBeVisible({ timeout: 3000 });
@@ -78,11 +78,14 @@ The `Screen:` listing uses `agent-device`'s own `[role] "label"` vocabulary, and
 
 `Received:` is the one line that repeats a value back, and it prints what the node reported. That is safe for a secure field, which reports a mask rather than its contents. It is not safe for a field you filled with `{ secret: true }`, because the snapshot carries no mark for it. Assert on the result of a sign-in rather than on the credential you typed.
 
-Run that spec yourself from `apps/e2e`.
+Run that spec yourself from `apps/e2e`, under either runner.
 
 ```sh
 TOUCHPRESS_INCLUDE_FAILING=1 npx playwright test --project=ios e2e/failing.spec.mts
+TOUCHPRESS_INCLUDE_FAILING=1 npx vitest run --project=ios e2e-vitest/failing.spec.mts
 ```
+
+Under Vitest the same message prints, and `screen.png` and `screen.txt` are annotations the default reporter lists under the failure. A `steps.txt` joins them when the test ran at least one action, one line per step with its nesting and duration. [Lifecycle](lifecycle.md) has the rule for when evidence is attached and when it only goes to `outputDir`.
 
 ## Screenshots
 
@@ -97,24 +100,44 @@ A locator is cropped out of the device's own screenshot, so the crop and the ima
 
 ### Baselines
 
+Leave the name out and it is the test's title with a number, one per assertion in that test. Where the file lands and what a missing or mismatched one does depend on the runner.
+
+#### Under Playwright
+
 The baseline path comes from `testInfo.snapshotPath(name, { kind: 'screenshot' })`, which is the same call Playwright's own screenshot assertion makes. `snapshotPathTemplate`, the per-project and per-platform suffix, and `--update-snapshots` all behave the way they already do in the project, because none of it is reimplemented here.
 
 ```
 e2e/screenshot.spec.mts-snapshots/home-ios-darwin.png
 ```
 
-Leave the name out and it is the test's title with a number, one per assertion in that test.
+A baseline that does not exist yet is written. Whether that also passes is Playwright's `updateSnapshots` setting, not touchpress's. `missing`, which is the default, and `all` write it and pass. Anything else writes it and fails with Playwright's own wording, so a first run cannot go green on a file it just invented. A mismatch is rewritten under `all` and `changed`.
 
-A baseline that does not exist yet is written. Whether that also passes is Playwright's `updateSnapshots` setting, not touchpress's: `missing`, which is the default, and `all` write it and pass, and anything else writes it and fails with Playwright's own wording so a first run cannot go green on a file it just invented. A mismatch is rewritten under `all` and `changed`.
+#### Under Vitest
+
+Vitest has no snapshot path for a PNG, so touchpress uses Playwright's default rule. The file goes in `<spec file>-snapshots` next to the spec, named `<name>-<project>-<platform>.png`, where the platform is Node's `process.platform`, the way Playwright's suffix is. The path is byte for byte the one Playwright's default template produces, so one committed tree serves both runners when the project names match.
+
+```
+e2e-vitest/screenshot.spec.mts-snapshots/home-ios-darwin.png
+```
+
+What a missing or mismatched baseline does follows Vitest's own snapshot mode.
+
+| how you run          | mode    | missing baseline       | mismatch          |
+| -------------------- | ------- | ---------------------- | ----------------- |
+| `vitest run`         | default | written, passes        | fails             |
+| `vitest run -u`      | update  | written, passes        | rewritten, passes |
+| `CI=true vitest run` | CI      | fails, nothing written | fails             |
+
+The default lands where Playwright's `missing` does, so a first run behaves the same under either runner. The CI row is the one deliberate difference. Vitest refuses to create a snapshot in CI for its own `toMatchSnapshot`, and a PNG appearing in a CI checkout is a surprise nobody asked for, so nothing is written and the capture is attached as `actual.png` instead.
 
 ### Options
 
-| option              | default          | meaning                                               |
-| ------------------- | ---------------- | ----------------------------------------------------- |
-| `maxDiffPixelRatio` | `0.01`           | the share of the image allowed to differ              |
-| `threshold`         | `0.2`            | pixelmatch's per-pixel colour distance, 0 to 1        |
-| `mask`              | none             | locators whose rects are painted black in both images |
-| `timeout`           | `expect.timeout` | how long to keep re-capturing                         |
+| option              | default                             | meaning                                               |
+| ------------------- | ----------------------------------- | ----------------------------------------------------- |
+| `maxDiffPixelRatio` | `0.01`                              | the share of the image allowed to differ              |
+| `threshold`         | `0.2`                               | pixelmatch's per-pixel colour distance, 0 to 1        |
+| `mask`              | none                                | locators whose rects are painted black in both images |
+| `timeout`           | `expect.timeout` or `expectTimeout` | how long to keep re-capturing                         |
 
 Use `mask` rather than a looser `maxDiffPixelRatio` when one region changes between runs, such as a clock or an avatar. A mask hides that region and keeps the rest of the image as strict as before.
 
@@ -142,7 +165,7 @@ Timeout: 3000ms (4 captures)
 expected.png, actual.png and diff.png are attached to this test in the HTML report.
 ```
 
-The three PNGs go into the HTML report, and the diff paints every pixel that differed. Two images of different sizes report both sizes instead of a ratio.
+The three PNGs go into the HTML report under Playwright and are annotations under Vitest, and the diff paints every pixel that differed. Two images of different sizes report both sizes instead of a ratio.
 
 ```
 Received: the screenshot is 440x956 and the baseline is 100x44

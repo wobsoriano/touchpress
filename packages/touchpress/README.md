@@ -3,7 +3,7 @@
 > [!WARNING]
 > This codebase was largely written by an LLM, supervised by a human maintainer. It is highly experimental. Use at your own risk.
 
-touchpress runs e2e tests for mobile apps on the Playwright test runner. It drives a booted simulator or emulator through [`agent-device`](https://agent-device.dev/).
+touchpress runs e2e tests for mobile apps on the Playwright test runner or on Vitest. It drives a booted simulator or emulator through [`agent-device`](https://agent-device.dev/). The spec below is the same under either runner, apart from the import line.
 
 ```ts
 import { expect, test } from 'touchpress/playwright';
@@ -29,11 +29,16 @@ test('open sign in with AI', async ({ device }) => {
 
 ### Install
 
+Pick a runner. Both are optional peer dependencies, so a project installs only the one it uses.
+
 ```sh
-pnpm add -D touchpress @playwright/test
+pnpm add -D touchpress @playwright/test   # import from 'touchpress/playwright'
+pnpm add -D touchpress vitest             # import from 'touchpress/vitest'
 ```
 
 ### Configure
+
+Set `app` to your app's bundle ID or package name and `readyWhen` to a locator visible once it has loaded. Under Playwright the keys go in `use`. Under Vitest they go in `provide`.
 
 ```ts
 // playwright.config.ts
@@ -54,7 +59,32 @@ export default defineConfig<TouchpressOptions>({
 });
 ```
 
-Set `app` to your app's bundle ID or package name and `readyWhen` to a locator visible once it has loaded.
+```ts
+// vitest.config.ts
+/// <reference types="touchpress/vitest" />
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: ['e2e/**/*.spec.ts'],
+    provide: { app: 'com.example.app', readyWhen: { testId: 'home' } },
+    isolate: false,
+    fileParallelism: false,
+    maxWorkers: 1,
+    testTimeout: 180_000,
+    projects: [
+      {
+        extends: true,
+        test: { name: 'ios', provide: { platform: 'ios', deviceName: 'iPhone 17 Pro Max' } },
+      },
+      {
+        extends: true,
+        test: { name: 'android', provide: { platform: 'android', deviceName: 'Pixel 7 API 34' } },
+      },
+    ],
+  },
+});
+```
 
 ### Run
 
@@ -63,6 +93,11 @@ Install your app on a booted simulator or emulator, save your tests in `e2e/`, t
 ```sh
 npx playwright test --project=ios
 npx playwright test --project=android
+```
+
+```sh
+npx vitest run --project=ios
+npx vitest run --project=android
 ```
 
 ## Sample project

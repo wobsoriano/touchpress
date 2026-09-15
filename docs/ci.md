@@ -12,15 +12,18 @@ Until then the device suite is verified locally, against a booted simulator and 
 
 ## `ci.yml`
 
-Runs on pushes to `main` and on every pull request, on `ubuntu-latest`. It checks out the repository, sets up Vite Plus with its cache, and runs the three commands you run locally.
+Runs on pushes to `main` and on every pull request, on `ubuntu-latest`. It checks out the repository, sets up Vite Plus with its cache, and runs the commands you run locally.
 
 ```sh
-vp run -r build   # build every package in dependency order
-vp check          # format, lint, and type check every package
-vp test           # the library's unit tests
+vp run -r build                          # build every package in dependency order
+vp check                                 # format, lint, and type check every package
+node apps/e2e/scripts/spec-parity.mjs    # the Vitest specs match the Playwright specs
+vp test                                  # the library's unit tests
 ```
 
 The build leads. The sample app imports touchpress through its exports map, which points at `dist`, so nothing can typecheck until the workspace is built.
+
+The parity script diffs `apps/e2e/e2e/` against `apps/e2e/e2e-vitest/` after normalizing the import line, so the two runners keep being proven against the same specs. `ai.spec.mts` is on its allowlist with the reason it may differ, and the script prints a diff and fails on anything else. `pnpm --filter touchpress-e2e check:parity` runs it locally.
 
 Nothing here touches a device, so it finishes in about a minute and it is what gates a pull request.
 
@@ -28,7 +31,7 @@ Nothing here touches a device, so it finishes in about a minute and it is what g
 
 Two jobs, one per platform, with a 60 minute cap and a concurrency group on the branch so a new run cancels the one it replaced. It triggers on `workflow_dispatch` only, for the reason above.
 
-The iOS job runs on `macos-26`. In order, it builds the library, boots an iPhone simulator through `futureware-tech/simulator-action` with `erase_before_boot` so every run starts from a clean device, builds `apps/e2e` in Release for the simulator, installs the app with `xcrun simctl install`, prepares the `agent-device` iOS runner, and runs the suite with `--project=ios`.
+The device workflow runs the Playwright suite. The iOS job runs on `macos-26`. In order, it builds the library, boots an iPhone simulator through `futureware-tech/simulator-action` with `erase_before_boot` so every run starts from a clean device, builds `apps/e2e` in Release for the simulator, installs the app with `xcrun simctl install`, prepares the `agent-device` iOS runner, and runs the suite with `--project=ios`.
 
 The Android job runs on `ubuntu-latest` and uses `reactivecircus/android-emulator-runner` for an API 34 `google_apis` x86_64 emulator with animations disabled. It builds and installs a Release APK and runs `--project=android`.
 
@@ -70,14 +73,16 @@ Both jobs upload `apps/e2e/playwright-report` when they fail, with seven day ret
 
 ## Running the suite from a script
 
-The e2e script takes the project flag from the caller, so one script serves both jobs. Run it through pnpm, not `vp run`.
+The e2e scripts take the project flag from the caller, so one script serves both jobs. Run them through pnpm, not `vp run`.
 
 ```sh
 pnpm --filter touchpress-e2e test:e2e --project=ios
 pnpm --filter touchpress-e2e test:e2e --project=android
+pnpm --filter touchpress-e2e test:e2e:vitest --project=ios
+pnpm --filter touchpress-e2e test:e2e:vitest --project=android
 ```
 
-`vp run` tracks every process a task starts through an IPC socket it passes in the environment. `agent-device` starts its daemon with that environment when no daemon is running, the daemon lives on after the suite, and `vp run` keeps waiting for it. The run prints its results and then hangs. pnpm passes no such environment, so the daemon starts clean and the command exits when Playwright does. The root `pnpm test:e2e` script is this pnpm command without a project flag, so it runs every project. The workflows call `apps/e2e/node_modules/.bin/playwright` and `packages/touchpress/node_modules/.bin/agent-device` directly instead, because `setup-vp` puts `vp` on the PATH but not `pnpm`.
+`vp run` tracks every process a task starts through an IPC socket it passes in the environment. `agent-device` starts its daemon with that environment when no daemon is running, the daemon lives on after the suite, and `vp run` keeps waiting for it. The run prints its results and then hangs. pnpm passes no such environment, so the daemon starts clean and the command exits when Playwright does. The root `pnpm test:e2e` and `pnpm test:e2e:vitest` scripts are these pnpm commands without a project flag, so each runs every project of its runner. The workflows call `apps/e2e/node_modules/.bin/playwright` and `packages/touchpress/node_modules/.bin/agent-device` directly instead, because `setup-vp` puts `vp` on the PATH but not `pnpm`.
 
 ## What a run costs
 

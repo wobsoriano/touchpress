@@ -73,14 +73,19 @@ npx expo start --port 8081
 
 Leave Metro running. No other project's Metro may hold port 8081. A development build loads whichever bundle answers, so a stray server means the tests drive someone else's app.
 
-Then run the suite. The script takes the project from the caller, so one script serves both platforms and CI.
+Then run the suite. The scripts take the project from the caller, so one script per runner serves both platforms and CI.
 
 ```sh
 pnpm test:e2e --project=ios
 pnpm test:e2e --project=android
 ```
 
-A `setup-ios` or `setup-android` project runs first and checks that the device the project names is booted. `TOUCHPRESS_IOS_DEVICE` and `TOUCHPRESS_ANDROID_DEVICE` override those names, which is how CI points the suite at whatever its runner booted.
+```sh
+pnpm test:e2e:vitest --project=ios
+pnpm test:e2e:vitest --project=android
+```
+
+Under Playwright a `setup-ios` or `setup-android` project runs first and checks that the device the project names is booted. Under Vitest each project's `globalSetup` does the same. `TOUCHPRESS_IOS_DEVICE` and `TOUCHPRESS_ANDROID_DEVICE` override those names, which is how CI points the suite at whatever its runner booted.
 
 ## The specs
 
@@ -93,3 +98,5 @@ A `setup-ios` or `setup-android` project runs first and checks that the device t
 - `list.spec.mts` scrolls a row into view and taps the button below the fold on a forty-row list.
 - `screenshot.spec.mts` compares the home screen and the Sign in button against committed baselines.
 - `failing.spec.mts` fails on purpose so the failure message and the `screen.png` and `screen.txt` attachments can be read. It is excluded from the default run. Include it with `TOUCHPRESS_INCLUDE_FAILING=1`.
+
+`e2e-vitest/` holds the same specs for Vitest, each differing from its twin in `e2e/` by the import line alone, and `scripts/spec-parity.mjs` fails CI when that stops being true. `ai.spec.mts` is the one allowed exception, because Vitest takes the timeout as a third argument, gates with `test.skipIf`, and builds the Anthropic provider through `test.extend`. There is no preflight spec on that side. `devices.ts` names the device per platform for both the config's `provide` and the two `globalSetup` files, `preflight.ios.ts` and `preflight.android.ts`, so the device a project provides and the one it checks cannot drift. Its screenshot baselines live in `e2e-vitest/screenshot.spec.mts-snapshots/`.

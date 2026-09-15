@@ -31,7 +31,7 @@ Version 6 or 7. Both carry every name touchpress uses.
 
 ## The `aiModel` key
 
-`aiModel` is one more key in Playwright's `use`, and it merges on its own like the rest.
+`aiModel` is one more key in Playwright's `use` or Vitest's `provide`, and it merges on its own like the rest.
 
 ```ts
 // playwright.config.ts
@@ -56,9 +56,18 @@ import { anthropic } from '@ai-sdk/anthropic';
 use: { app: 'com.example.app', aiModel: anthropic('claude-sonnet-5') }
 ```
 
+Under Vitest, `provide` carries only what structured clone can, so the config takes the string form only. A provider instance goes through `test.extend` in the spec that needs it, which overrides the provided value for that file.
+
+```ts
+import { anthropic } from '@ai-sdk/anthropic';
+import { test as base } from 'touchpress/vitest';
+
+const test = base.extend({ aiModel: anthropic('claude-sonnet-5') });
+```
+
 Leave it unset and `act` and `extract` fail naming the key. Nothing else reads it, so a config that sets it costs nothing until a test calls one of them.
 
-Playwright reads no `.env` on its own. Load one from the config before `defineConfig`, as the sample app does, and keep the file out of git.
+Neither runner reads a `.env` on its own. Load one from the config before `defineConfig`, as the sample app does, and keep the file out of git.
 
 ```ts
 import { existsSync } from 'node:fs';
@@ -166,13 +175,17 @@ Each `act` also attaches `ai-act-1.json` to the test. It holds every tool call w
 
 ## Test timeouts
 
-A loop can run for minutes. Playwright's per-test timeout defaults to 30 seconds and is not what `act` reads, so raise it on any spec that calls `act`.
+A loop can run for minutes. The runner's per-test timeout is not what `act` reads, and Playwright's defaults to 30 seconds and Vitest's to 5, so raise it on any spec that calls `act`. Under Playwright that is a call inside the test. Under Vitest it is the test's third argument.
 
 ```ts
 test.setTimeout(180_000);
 ```
 
-Or give the AI specs a project of their own with a longer `timeout`.
+```ts
+test('sign in', async ({ device }) => {}, 180_000);
+```
+
+Or give the AI specs a project of their own with a longer timeout.
 
 ## What you give up
 

@@ -2,7 +2,7 @@
 
 ## One session per worker slot
 
-touchpress opens one `agent-device` session per Playwright worker slot and names it `${sessionPrefix}-${project}-${parallelIndex}`. The name is deterministic on purpose. Playwright discards a worker after any test failure and starts a replacement that reuses the same `parallelIndex`, so the replacement reconnects to the session the failed worker left behind instead of stranding it.
+touchpress opens one `agent-device` session per worker slot and names it `${sessionPrefix}-${project}-${slot}`. The slot is Playwright's `parallelIndex` or Vitest's `VITEST_POOL_ID` less one. The name is deterministic on purpose. Playwright discards a worker after any test failure and starts a replacement that reuses the same `parallelIndex`, so the replacement reconnects to the session the failed worker left behind instead of stranding it.
 
 Startup is convergent. Running it twice settles on one ready session.
 
@@ -76,7 +76,7 @@ Set `onDeviceInUse: 'reclaim'` when a shared CI device should always be taken ov
 
 ## Evidence
 
-`evidence` defaults to `'on-failure'`. When a test does not end in the status it expected, the `device` fixture captures `screen.png` and a `screen.txt` listing and attaches both to that test, before the worker fixture closes the session. That teardown runs in the separate budget Playwright grants after a test finishes, so a test that timed out still gets its screenshot.
+`evidence` defaults to `'on-failure'`. Under Playwright, when a test does not end in the status it expected, the `device` fixture captures `screen.png` and a `screen.txt` listing and attaches both to that test, before the worker fixture closes the session. That teardown runs in the separate budget Playwright grants after a test finishes, so a test that timed out still gets its screenshot. Vitest closes a test's annotations the moment its body ends, so there the capture happens earlier. [Under Vitest](#under-vitest) has the rule.
 
 A capture that itself fails records an annotation and returns. Masking the test's real error with a screenshot error would be worse than having no screenshot.
 
@@ -88,7 +88,19 @@ No `trace.zip` is produced, because no browser is involved. The HTML report is t
 
 ## Shutdown
 
-The worker fixture closes the session when the worker exits. `close` is idempotent, it reaches the closed state even when the driver call fails, and it never shuts the simulator down. touchpress does not boot, build, install, or tear down devices.
+The worker fixture closes the session when the worker exits, `session` under Playwright and `workerTeardown` under Vitest. `close` is idempotent, it reaches the closed state even when the driver call fails, and it never shuts the simulator down. touchpress does not boot, build, install, or tear down devices.
+
+## Under Vitest
+
+The same session, opened and closed at different moments because Vitest's fixtures work differently.
+
+The session opens lazily, on the first test that asks for `device`. That is the first moment the project name is known, since a Vitest worker fixture's context carries no project. The session goes into a map in the worker's module, keyed by its name, and every later test in that worker finds it there. Under `isolate: false` the map lives as long as the worker, across spec files. A retry runs in the same worker, so it relaunches on the session it already has rather than opening another. A cached session that is no longer ready is closed and reopened, the same convergent startup as above.
+
+`workerTeardown` is an automatic worker fixture whose setup does nothing. Its teardown closes every session in the map when the worker exits, which is what guarantees a session is closed for a file that names nothing.
+
+Evidence is attached at the failure site, while the body is still running. A matcher that fails, or a top-level step that throws, attaches three files before it rejects. `steps.txt` is the action trail, `screen.png` the capture, and `screen.txt` the listing. Steps are not reported as they run, because Vitest's default reporter prints annotations on a passing test too and a forty-action test would print forty lines on green. The trail is buffered and attached once, one line per step with its nesting and duration, and a test that ran no step attaches no trail.
+
+A failure touchpress never saw cannot be annotated once the body has ended. A plain `throw`, a Vitest timeout, and a green test under `evidence: 'always'` all get the same files written to the test's directory under `outputDir` only, `<outputDir>/<spec>-<title>[-<project>][-retry<N>]/`. A `test.fails` body ends as expected and captures nothing, the way `test.fail` does under Playwright.
 
 ## Running the CLI alongside a test run
 
