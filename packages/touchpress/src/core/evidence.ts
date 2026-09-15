@@ -3,6 +3,18 @@ import { renderScreen } from './screen.ts';
 import type { DeviceSession } from './session.ts';
 
 /**
+ * `unexpected` is the runner's own reading of the outcome, such as Playwright's
+ * `status !== expectedStatus`, so an expected failure captures nothing.
+ */
+export function evidenceWanted(
+  policy: 'on-failure' | 'always' | 'off',
+  unexpected: boolean,
+): boolean {
+  if (policy === 'off') return false;
+  return policy === 'always' || unexpected;
+}
+
+/**
  * Never throws. A capture that fails records a note and returns, because masking
  * the test's real error with a screenshot error is worse than no screenshot.
  */

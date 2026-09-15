@@ -86,6 +86,12 @@ export type DeviceSession = {
   /** Relaunches the app and re-runs the ready gate. Reported as one step. */
   relaunch(sink: ActionSink): Promise<void>;
   /**
+   * Called by an adapter before every test body. The open already launched the
+   * app, so the first test after it skips the relaunch that `relaunch:
+   * 'per-test'` gives every later one. Under `'per-worker'` nothing happens.
+   */
+  beginTest(sink: ActionSink): Promise<void>;
+  /**
    * Discards the app's stored state, then relaunches and re-runs the ready
    * gate, because an app holding a cleared session in memory has not been
    * cleared. Reported as one step with the relaunch nested under it.
@@ -193,6 +199,7 @@ function createSession(
 ): DeviceSession {
   const queue = createQueue();
   let state: SessionState = { phase: 'ready', binding };
+  let testsBegun = 0;
 
   // The settle is best-effort upstream, so a short remaining budget costs settling, never the action.
   const settle = (budgetMs: number) => ({
@@ -271,6 +278,10 @@ function createSession(
     screen: () => run((one) => one.capture()),
     screenshot: (path) => queue.enqueue(() => driver.screenshot(path)),
     relaunch,
+    beginTest: async (sink) => {
+      if (testsBegun > 0 && options.relaunch === 'per-test') await relaunch(sink);
+      testsBegun += 1;
+    },
     clearState: (sink) =>
       sink.step(renderTitle({ kind: 'clear-state', app: options.app }), async () => {
         await run((one) => one.clearAppState(options.app));

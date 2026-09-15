@@ -12,7 +12,7 @@ import type { Device as CoreDevice } from './core/device.ts';
 export { setupTest, test } from './playwright/fixtures.ts';
 
 export { expect } from './playwright/expect.ts';
-export type { ScreenshotOptions } from './playwright/screenshot.ts';
+export type { ScreenshotOptions } from './core/screenshot-assertion.ts';
 
 export { TouchpressError } from './core/errors.ts';
 export type { ErrorInfo, ExpectedValue } from './core/errors.ts';

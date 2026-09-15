@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import type {
   BackMode,
   Binding,
@@ -44,6 +45,8 @@ export type FakeDriver = DeviceDriver & {
   readonly coveredRefs: string[];
   /** What `open` reports as the device identifier, which is what decides a driver's keychain reset. */
   udid: string | null;
+  /** Written to the path every `screenshot` is given, so a screenshot assertion has a file to read. Null writes nothing. */
+  png: Buffer | null;
   /**
    * What the next fills leave in the field, one entry each. Anything beyond the
    * queue lands whole, so a short queue models a device keyboard that drops
@@ -83,6 +86,7 @@ export function createFakeDriver(options?: {
     coveredRefs,
     fillOutcomes,
     udid: null,
+    png: null,
     revertingFills: 0,
     revertAfterMs: 0,
     revertTo: '',
@@ -141,6 +145,7 @@ export function createFakeDriver(options?: {
 
     screenshot: (path: string): Promise<string> => {
       calls.push(`screenshot ${path}`);
+      if (driver.png !== null) writeFileSync(path, driver.png);
       return Promise.resolve(path);
     },
 

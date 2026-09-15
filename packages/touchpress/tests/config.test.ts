@@ -49,6 +49,13 @@ test("Playwright's own actionTimeout drives an action, and its zero reads as uns
   expect(() => parseDeviceOptions({ ...minimal, actionTimeout: -1 })).toThrow(/use\.actionTimeout/);
 });
 
+test("Playwright's own expect.timeout drives a matcher, and its zero reads as unset", () => {
+  expect(parseDeviceOptions(minimal).expectTimeout).toBe(5000);
+  expect(parseDeviceOptions({ ...minimal, expectTimeout: 7000 }).expectTimeout).toBe(7000);
+  expect(parseDeviceOptions({ ...minimal, expectTimeout: 0 }).expectTimeout).toBe(5000);
+  expect(() => parseDeviceOptions({ ...minimal, expectTimeout: -1 })).toThrow(/use\.expectTimeout/);
+});
+
 test('readyWhen accepts text, testId, and role forms', () => {
   expect(
     parseDeviceOptions({ ...minimal, readyWhen: { text: 'Hi', exact: true } }).readyWhen,

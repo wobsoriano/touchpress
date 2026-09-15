@@ -1,4 +1,5 @@
 import { describeNode, type Check } from './checks.ts';
+import type { ResolvedOptions } from './config.ts';
 import type { BackMode, ScrollDirection, Settled } from './driver.ts';
 import { TouchpressError, type ExpectedValue } from './errors.ts';
 import { probe, type ProbeOptions, type ProbeResult } from './probe.ts';
@@ -68,6 +69,12 @@ export type Keyboard = {
 };
 
 export type Device = {
+  /**
+   * The resolved configuration this device runs under. A spec reads `platform`
+   * off it under either runner, and a matcher whose runner gives it no timeout
+   * reads `expectTimeout`.
+   */
+  readonly options: ResolvedOptions;
   /** Matches a node's accessibility name or its value. */
   getByText(text: string | RegExp, options?: TextOptions): Locator;
   getByRole(role: Role, options?: RoleOptions): Locator;
@@ -125,6 +132,7 @@ export function createDevice(session: DeviceSession, sink: ActionSink): Device {
   const build = (query: Query): Locator => createLocator(session, sink, query, device);
   let screenshots = 0;
   const device: Device = {
+    options: session.options,
     getByText: (text, options) => build({ name: textMatch(text, options?.exact) }),
     getByRole: (role, options) =>
       build(

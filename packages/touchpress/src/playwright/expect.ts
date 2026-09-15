@@ -1,8 +1,11 @@
-import { expect as base, type ExpectMatcherState } from '@playwright/test';
-import type { Device, Locator } from '../core/device.ts';
+import { expect as base, test as runner, type ExpectMatcherState } from '@playwright/test';
 import type { Check, CheckName } from '../core/checks.ts';
+import type { Device, Locator } from '../core/device.ts';
+import type { ProbeResult } from '../core/probe.ts';
 import { textMatch } from '../core/query.ts';
-import { assertScreenshot, type ScreenshotOptions } from './screenshot.ts';
+import { assertScreenshot, type ScreenshotOptions } from '../core/screenshot-assertion.ts';
+import { baselinePath, playwrightBaseline } from './baseline.ts';
+import { playwrightSink } from './sink.ts';
 
 export type MatcherOptions = { timeout?: number };
 export type TextMatcherOptions = MatcherOptions & { exact?: boolean };
@@ -14,6 +17,17 @@ type MatcherResult = {
   expected: string;
   actual: string | null;
 };
+
+/** The one mapping in this adapter. Core renders every message; this only reshapes it. */
+function toMatcherResult(name: string, result: ProbeResult): MatcherResult {
+  return {
+    pass: result.pass,
+    name,
+    expected: result.expected,
+    actual: result.actual,
+    message: () => result.message,
+  };
+}
 
 /**
  * `this.timeout` is `expect.timeout` from the Playwright config. `this.isNot`
@@ -30,13 +44,7 @@ async function runCheck(
     negate: state.isNot,
     timeoutMs: timeout ?? state.timeout,
   });
-  return {
-    pass: result.pass,
-    name: check.name,
-    expected: result.expected,
-    actual: result.actual,
-    message: () => result.message,
-  };
+  return toMatcherResult(check.name, result);
 }
 
 function retrying(
@@ -100,12 +108,23 @@ export const expect = base.extend({
     return runCheck(this, locator, { name: 'toHaveCount', expected }, options?.timeout);
   },
 
-  toHaveScreenshot(
+  async toHaveScreenshot(
     this: ExpectMatcherState,
     target: Device | Locator,
     nameOrOptions?: string | ScreenshotOptions,
-    options?: ScreenshotOptions,
+    extra?: ScreenshotOptions,
   ) {
-    return assertScreenshot(this, target, nameOrOptions, options);
+    const options = (typeof nameOrOptions === 'string' ? extra : nameOrOptions) ?? {};
+    const info = runner.info();
+    const result = await assertScreenshot({
+      target,
+      baseline: baselinePath(info, typeof nameOrOptions === 'string' ? nameOrOptions : null),
+      options,
+      negate: this.isNot,
+      timeoutMs: options.timeout ?? this.timeout,
+      policy: playwrightBaseline(info.config.updateSnapshots),
+      sink: playwrightSink(),
+    });
+    return toMatcherResult('toHaveScreenshot', result);
   },
 });

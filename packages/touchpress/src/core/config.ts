@@ -63,7 +63,15 @@ export const TOUCHPRESS_DEFAULTS: Omit<
   sessionPrefix: 'touchpress',
 };
 
-const DEFAULT_ACTION_TIMEOUT_MS = 10_000;
+/**
+ * The budget for one action when the runner supplies none. Playwright's own
+ * `use.actionTimeout` overrides it, and the Vitest adapter declares it as the
+ * default of its `actionTimeout` option, so there is one number, not two.
+ */
+export const DEFAULT_ACTION_TIMEOUT_MS = 10_000;
+
+/** Playwright's own `expect.timeout` default, so a spec moved between runners waits the same. */
+export const DEFAULT_EXPECT_TIMEOUT_MS = 5_000;
 
 /** The config-file friendly subset of a locator. Matched by the same rules as any other query. */
 export type ReadyQuery =
@@ -91,6 +99,8 @@ export type ResolvedOptions = {
   readonly relaunch: 'per-test' | 'per-worker';
   readonly onDeviceInUse: 'fail' | 'reclaim';
   readonly actionTimeout: number;
+  /** What a matcher waits when the call passes no `{ timeout }`. */
+  readonly expectTimeout: number;
   readonly settleQuietMs: number;
   readonly launchTimeout: number;
   readonly dismissDevOverlay: boolean;
@@ -118,8 +128,8 @@ const ROLES: readonly Role[] = [
 
 /**
  * The config boundary. Options arrive as `unknown` because a project can omit
- * any of them, or be written in JavaScript, and because `actionTimeout` rides
- * along from Playwright's own options. Every message names the key to fix.
+ * any of them, or be written in JavaScript, and because the two timeouts ride
+ * along from the runner's own options. Every message names the key to fix.
  */
 export function parseDeviceOptions(raw: unknown): ResolvedOptions {
   const platform = read(raw, 'platform');
@@ -149,7 +159,16 @@ export function parseDeviceOptions(raw: unknown): ResolvedOptions {
       ['fail', 'reclaim'],
       TOUCHPRESS_DEFAULTS.onDeviceInUse,
     ),
-    actionTimeout: parseActionTimeout(read(raw, 'actionTimeout')),
+    actionTimeout: parseTimeout(
+      'actionTimeout',
+      read(raw, 'actionTimeout'),
+      DEFAULT_ACTION_TIMEOUT_MS,
+    ),
+    expectTimeout: parseTimeout(
+      'expectTimeout',
+      read(raw, 'expectTimeout'),
+      DEFAULT_EXPECT_TIMEOUT_MS,
+    ),
     settleQuietMs: positive(
       'settleQuietMs',
       read(raw, 'settleQuietMs'),
@@ -186,13 +205,14 @@ function read(source: unknown, key: string): unknown {
 }
 
 /**
- * Playwright's own `use.actionTimeout`, not one of touchpress's. Playwright defaults
- * it to 0, which means "no timeout" there and would mean "give up at once" here,
- * so 0 falls back the way an unset value does.
+ * Under Playwright these are its own `use.actionTimeout` and `expect.timeout`,
+ * not touchpress options. Playwright defaults `actionTimeout` to 0, which means
+ * "no timeout" there and would mean "give up at once" here, so 0 falls back the
+ * way an unset value does.
  */
-function parseActionTimeout(value: unknown): number {
-  if (value === 0) return DEFAULT_ACTION_TIMEOUT_MS;
-  return positive('actionTimeout', value, DEFAULT_ACTION_TIMEOUT_MS);
+function parseTimeout(field: string, value: unknown, fallback: number): number {
+  if (value === 0) return fallback;
+  return positive(field, value, fallback);
 }
 
 function parseReadyWhen(raw: unknown): Query {
@@ -274,7 +294,7 @@ export function deviceNameForSlot(options: ResolvedOptions, slot: number): strin
 function tooFewDevices(problem: string, slot: number): TouchpressError {
   return fail(
     'deviceName',
-    `${problem}, but Playwright asked for worker slot ${String(slot)}. List one device name per worker, or set \`workers: 1\`.`,
+    `${problem}, but the runner asked for worker slot ${String(slot)}. List one device name per worker, or run one worker (\`workers: 1\` under Playwright, \`maxWorkers: 1\` under Vitest).`,
   );
 }
 

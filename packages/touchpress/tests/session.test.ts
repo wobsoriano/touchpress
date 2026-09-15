@@ -119,6 +119,23 @@ test('close is idempotent and reaches closed even when the driver call fails', a
   await session.close('worker-exit');
 });
 
+test('beginTest relaunches before every test but the first, and never under per-worker', async () => {
+  const driver = createFakeDriver();
+  const session = await open(driver);
+  const opens = () => driver.calls.filter((call) => call.startsWith('open')).length;
+
+  await session.beginTest(silentSink);
+  expect(opens()).toBe(1);
+  await session.beginTest(silentSink);
+  await session.beginTest(silentSink);
+  expect(opens()).toBe(3);
+
+  const perWorker = await open(createFakeDriver(), { relaunch: 'per-worker' });
+  await perWorker.beginTest(silentSink);
+  await perWorker.beginTest(silentSink);
+  expect(opens()).toBe(3);
+});
+
 test('a tap resolves against a fresh screen and dispatches a generation-pinned ref', async () => {
   const driver = createFakeDriver();
   const session = await open(driver);

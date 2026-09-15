@@ -22,7 +22,13 @@ export type {
 export { describeCheck, evaluate } from './checks.ts';
 export type { Check, CheckName, Verdict } from './checks.ts';
 
-export { deviceNameForSlot, parseDeviceOptions, TOUCHPRESS_DEFAULTS } from './config.ts';
+export {
+  DEFAULT_ACTION_TIMEOUT_MS,
+  DEFAULT_EXPECT_TIMEOUT_MS,
+  deviceNameForSlot,
+  parseDeviceOptions,
+  TOUCHPRESS_DEFAULTS,
+} from './config.ts';
 export type { DeviceChoice, ReadyQuery, ResolvedOptions, TouchpressOptions } from './config.ts';
 
 export type {
@@ -42,7 +48,7 @@ export type {
 export { TouchpressError } from './errors.ts';
 export type { ErrorInfo, ExpectedValue } from './errors.ts';
 
-export { captureEvidence } from './evidence.ts';
+export { captureEvidence, evidenceWanted } from './evidence.ts';
 
 export { preflight } from '../preflight.ts';
 export type { PreflightDevice, PreflightReport } from '../preflight.ts';
@@ -55,6 +61,15 @@ export type { Filter, Query, Role, TextMatch } from './query.ts';
 
 export { compareScreenshot, cropScreenshot, relativeTo, sizeOf, toPixelBox } from './screenshot.ts';
 export type { Comparison, CompareOptions, PixelBox, Size } from './screenshot.ts';
+
+export { assertScreenshot } from './screenshot-assertion.ts';
+export type {
+  BaselinePolicy,
+  MismatchRule,
+  MissingBaselineRule,
+  ScreenshotOptions,
+  ScreenshotRequest,
+} from './screenshot-assertion.ts';
 
 export { createScrollSearch, directionToward } from './scroll.ts';
 export type { ScrollDevice, ScrollSearch, ScrollTrail } from './scroll.ts';

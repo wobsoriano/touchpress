@@ -8,7 +8,7 @@ import {
   toPixelBox,
   type PixelBox,
 } from '../src/core/screenshot.ts';
-import { defaultName } from '../src/playwright/screenshot.ts';
+import { defaultName, playwrightBaseline } from '../src/playwright/baseline.ts';
 import type { TestInfo } from '@playwright/test';
 
 type Colour = readonly [number, number, number];
@@ -168,4 +168,20 @@ test('an unnamed baseline carries its describe path, so two blocks sharing a tit
   const inner = defaultName(info(['file.spec.ts', 'inner', 'shot']));
   expect(outer).toBe('outer-shot-1.png');
   expect(inner).toBe('inner-shot-1.png');
+});
+
+test("Playwright's four update modes land on the two axes core reads", () => {
+  expect(playwrightBaseline('all')).toEqual({
+    onMissing: 'write-and-pass',
+    onMismatch: 'overwrite-and-pass',
+  });
+  expect(playwrightBaseline('changed')).toEqual({
+    onMissing: 'write-and-fail',
+    onMismatch: 'overwrite-and-pass',
+  });
+  expect(playwrightBaseline('missing')).toEqual({
+    onMissing: 'write-and-pass',
+    onMismatch: 'fail',
+  });
+  expect(playwrightBaseline('none')).toEqual({ onMissing: 'write-and-fail', onMismatch: 'fail' });
 });

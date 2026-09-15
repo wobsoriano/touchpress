@@ -1,9 +1,10 @@
-import { test as runner, type ExpectMatcherState, type TestInfo } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Device, Locator } from '../core/device.ts';
-import type { Query } from '../core/query.ts';
-import { resolve, type Screen } from '../core/screen.ts';
+import type { Device, Locator } from './device.ts';
+import type { ProbeResult } from './probe.ts';
+import type { Query } from './query.ts';
+import type { ActionSink } from './report.ts';
+import { resolve, type Screen } from './screen.ts';
 import {
   compareScreenshot,
   cropScreenshot,
@@ -12,10 +13,8 @@ import {
   toPixelBox,
   type Comparison,
   type PixelBox,
-} from '../core/screenshot.ts';
-import type { ActionSink } from '../core/report.ts';
-import { sleep } from '../core/session.ts';
-import { playwrightSink } from './fixtures.ts';
+} from './screenshot.ts';
+import { sleep } from './session.ts';
 
 const POLL_INTERVAL_MS = 250;
 const DEFAULT_MAX_DIFF_PIXEL_RATIO = 0.01;
@@ -31,12 +30,49 @@ export type ScreenshotOptions = {
   mask?: Locator[];
 };
 
-type MatcherResult = {
-  pass: boolean;
-  message: () => string;
-  name: string;
-  expected: string;
-  actual: string | null;
+/**
+ * What to do the first time an assertion runs against a name with no committed
+ * PNG. The question is whether a file the run just invented may turn the run
+ * green, and whether the tree is touched at all.
+ *
+ * - `write-and-pass` writes the baseline and passes. The "record it" mode.
+ * - `write-and-fail` writes the baseline and fails at once, so the author
+ *   reviews and commits it before a second run can go green.
+ * - `fail` leaves the tree alone and attaches the capture as evidence, for a
+ *   runner whose CI mode must not write.
+ */
+export type MissingBaselineRule = 'write-and-pass' | 'write-and-fail' | 'fail';
+
+/**
+ * What to do when a baseline exists and the capture disagrees with it.
+ *
+ * - `overwrite-and-pass` accepts the new pixels as the truth. The "update" mode.
+ * - `fail` keeps capturing until the deadline, then fails with expected, actual
+ *   and diff attached.
+ */
+export type MismatchRule = 'overwrite-and-pass' | 'fail';
+
+/**
+ * A runner's snapshot setting as two independent axes. Playwright's four modes
+ * and Vitest's three are seven points in the same space, and the loop reads
+ * the axes rather than the mode, so core never learns which runner it serves.
+ */
+export type BaselinePolicy = {
+  readonly onMissing: MissingBaselineRule;
+  readonly onMismatch: MismatchRule;
+};
+
+export type ScreenshotRequest = {
+  /** A locator is cropped out of the device's own capture, so image and rects share one snapshot. */
+  readonly target: Device | Locator;
+  /** The resolved path of the committed PNG. The adapter names it, so core mints nothing. */
+  readonly baseline: string;
+  readonly options: ScreenshotOptions;
+  /** True when the caller wrote `.not`. */
+  readonly negate: boolean;
+  readonly timeoutMs: number;
+  readonly policy: BaselinePolicy;
+  readonly sink: ActionSink;
 };
 
 /** A locator that is not on screen yet is retried, the way every other matcher retries. */
@@ -45,48 +81,37 @@ type Attempt =
   | { readonly kind: 'captured'; readonly png: Buffer; readonly mask: readonly PixelBox[] };
 
 /**
- * Numbers an unnamed screenshot per test, so two assertions in one test do not
- * write over each other's baseline. A retried test gets a fresh `TestInfo`, so
- * the numbering starts again and the same run reproduces the same paths.
- */
-const ordinals = new WeakMap<TestInfo, number>();
-
-/**
- * The baseline path comes from `testInfo.snapshotPath`, so
- * `snapshotPathTemplate`, the per-project suffix and `--update-snapshots` behave
- * the way they do for Playwright's own screenshot assertion.
+ * Returns the `ProbeResult` every other matcher returns, so an adapter has one
+ * mapping to its runner's matcher result for all eight. Never throws for a
+ * failed expectation. A broken session still throws, the way `probe` does.
  *
  * A locator's crop and every mask are resolved off one snapshot taken next to
  * the image. Rects from two snapshots would index into the image at two
  * different scroll positions, which crops the wrong thing rather than failing.
  */
-export async function assertScreenshot(
-  state: ExpectMatcherState,
-  target: Device | Locator,
-  nameOrOptions: string | ScreenshotOptions | undefined,
-  extra: ScreenshotOptions | undefined,
-): Promise<MatcherResult> {
-  const options = (typeof nameOrOptions === 'string' ? extra : nameOrOptions) ?? {};
-  const info = runner.info();
-  const sink = playwrightSink();
-  const timeout = options.timeout ?? state.timeout;
+export async function assertScreenshot(request: ScreenshotRequest): Promise<ProbeResult> {
+  const { target, baseline, options, negate, policy, sink } = request;
+  const timeout = request.timeoutMs;
   const maxDiffPixelRatio = options.maxDiffPixelRatio ?? DEFAULT_MAX_DIFF_PIXEL_RATIO;
-  const expected = `${state.isNot ? 'not ' : ''}at most ${percent(maxDiffPixelRatio)} of pixels to differ`;
+  const expected = `${negate ? 'not ' : ''}at most ${percent(maxDiffPixelRatio)} of pixels to differ`;
   const label = 'query' in target ? target.description : 'the whole device';
-  const baseline = info.snapshotPath(
-    typeof nameOrOptions === 'string' ? nameOrOptions : defaultName(info),
-    { kind: 'screenshot' },
-  );
-  const update = info.config.updateSnapshots;
   const deadline = Date.now() + timeout;
 
   let captures = 0;
-  let attempt = await capture(target, info, options.mask ?? []);
+  let attempt = await capture(target, sink, options.mask ?? []);
   for (;;) {
     captures += 1;
     if (attempt.kind === 'captured') {
       if (!existsSync(baseline)) {
-        return missingBaseline(state, { expected, label, baseline, update, png: attempt.png });
+        return missingBaseline({
+          expected,
+          label,
+          baseline,
+          negate,
+          rule: policy.onMissing,
+          png: attempt.png,
+          sink,
+        });
       }
       const comparison = compareScreenshot(readFileSync(baseline), attempt.png, {
         threshold: options.threshold ?? DEFAULT_THRESHOLD,
@@ -94,29 +119,17 @@ export async function assertScreenshot(
         mask: attempt.mask,
       });
       const matched = comparison.kind === 'match';
-      if (matched !== state.isNot) {
-        return {
-          pass: matched,
-          name: 'toHaveScreenshot',
-          expected,
-          actual: received(comparison),
-          message: () => '',
-        };
+      if (matched !== negate) {
+        return { pass: matched, expected, actual: received(comparison), message: '' };
       }
-      if (!state.isNot && (update === 'all' || update === 'changed')) {
+      if (!negate && policy.onMismatch === 'overwrite-and-pass') {
         write(baseline, attempt.png);
-        return {
-          pass: true,
-          name: 'toHaveScreenshot',
-          expected,
-          actual: received(comparison),
-          message: () => '',
-        };
+        return { pass: true, expected, actual: received(comparison), message: '' };
       }
       if (Date.now() >= deadline) {
         await attachAll(sink, baseline, attempt.png, comparison);
-        return fail(state, expected, received(comparison), [
-          `Expected ${state.isNot ? 'not.' : ''}toHaveScreenshot but it never ${state.isNot ? 'differed' : 'matched'}.`,
+        return fail(negate, expected, received(comparison), [
+          `Expected ${negate ? 'not.' : ''}toHaveScreenshot but it never ${negate ? 'differed' : 'matched'}.`,
           ``,
           `Target: ${label}`,
           `Baseline: ${baseline}`,
@@ -128,8 +141,8 @@ export async function assertScreenshot(
         ]);
       }
     } else if (Date.now() >= deadline) {
-      return fail(state, expected, null, [
-        `Expected ${state.isNot ? 'not.' : ''}toHaveScreenshot but the locator never resolved.`,
+      return fail(negate, expected, null, [
+        `Expected ${negate ? 'not.' : ''}toHaveScreenshot but the locator never resolved.`,
         ``,
         `Target: ${label}`,
         `Received: ${attempt.detail}`,
@@ -137,7 +150,7 @@ export async function assertScreenshot(
       ]);
     }
     await sleep(Math.min(POLL_INTERVAL_MS, deadline - Date.now()));
-    attempt = await capture(target, info, options.mask ?? []);
+    attempt = await capture(target, sink, options.mask ?? []);
   }
 }
 
@@ -152,12 +165,12 @@ export async function assertScreenshot(
  */
 async function capture(
   target: Device | Locator,
-  info: TestInfo,
+  sink: ActionSink,
   masks: readonly Locator[],
 ): Promise<Attempt> {
   const device = 'query' in target ? target.device : target;
   const screen = await device.screen();
-  const path = await device.screenshot({ path: info.outputPath(`toHaveScreenshot-actual.png`) });
+  const path = await device.screenshot({ path: sink.outputPath('toHaveScreenshot-actual.png') });
   const full = readFileSync(path);
   const scale = scaleOf(screen, sizeOf(full).width);
 
@@ -211,39 +224,50 @@ function scaleOf(screen: Screen, imageWidth: number): number {
   return widest > 0 ? imageWidth / widest : 1;
 }
 
-function missingBaseline(
-  state: ExpectMatcherState,
-  input: {
-    readonly expected: string;
-    readonly label: string;
-    readonly baseline: string;
-    readonly update: TestInfo['config']['updateSnapshots'];
-    readonly png: Buffer;
-  },
-): MatcherResult {
-  if (state.isNot) {
-    return fail(state, input.expected, null, [
+async function missingBaseline(input: {
+  readonly expected: string;
+  readonly label: string;
+  readonly baseline: string;
+  readonly negate: boolean;
+  readonly rule: MissingBaselineRule;
+  readonly png: Buffer;
+  readonly sink: ActionSink;
+}): Promise<ProbeResult> {
+  const { expected, baseline, negate, rule, png, sink } = input;
+  if (negate) {
+    return fail(negate, expected, null, [
       `Expected not.toHaveScreenshot, but there is no baseline to differ from.`,
       ``,
       `Target: ${input.label}`,
-      `Baseline: ${input.baseline}`,
+      `Baseline: ${baseline}`,
       ``,
       `Write one with a passing toHaveScreenshot first.`,
     ]);
   }
-  write(input.baseline, input.png);
-  if (input.update === 'all' || input.update === 'missing') {
-    return {
-      pass: true,
-      name: 'toHaveScreenshot',
-      expected: input.expected,
-      actual: null,
-      message: () => '',
-    };
+  switch (rule) {
+    case 'write-and-pass':
+      write(baseline, png);
+      return { pass: true, expected, actual: null, message: '' };
+    case 'write-and-fail':
+      write(baseline, png);
+      return fail(negate, expected, null, [
+        `A snapshot doesn't exist at ${baseline}, writing actual.`,
+      ]);
+    case 'fail': {
+      const actualPath = sink.outputPath('actual.png');
+      writeFileSync(actualPath, png);
+      await sink.attach({ name: 'actual.png', path: actualPath, contentType: 'image/png' });
+      return fail(negate, expected, null, [
+        `A snapshot doesn't exist at ${baseline}, and this run may not write one.`,
+        ``,
+        `actual.png is attached to this test. Run in a mode that writes baselines, then commit the file.`,
+      ]);
+    }
+    default: {
+      const never: never = rule;
+      throw new Error(`unhandled missing baseline rule ${JSON.stringify(never)}`);
+    }
   }
-  return fail(state, input.expected, null, [
-    `A snapshot doesn't exist at ${input.baseline}, writing actual.`,
-  ]);
 }
 
 async function attachAll(
@@ -289,41 +313,17 @@ function timeoutLine(timeout: number, captures: number): string {
   return `Timeout: ${String(timeout)}ms (${String(captures)} capture${captures === 1 ? '' : 's'})`;
 }
 
+/** The value that fails the assertion whether or not the caller wrote `.not`, the way `probe` reports one. */
 function fail(
-  state: ExpectMatcherState,
+  negate: boolean,
   expected: string,
   actual: string | null,
   lines: readonly string[],
-): MatcherResult {
-  // The value that fails the assertion whether or not the caller wrote `.not`, the way `probe` reports one.
-  return {
-    pass: state.isNot,
-    name: 'toHaveScreenshot',
-    expected,
-    actual,
-    message: () => lines.join('\n'),
-  };
+): ProbeResult {
+  return { pass: negate, expected, actual, message: lines.join('\n') };
 }
 
 function write(path: string, png: Buffer): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, png);
-}
-
-/**
- * The describe path is part of the name, the way Playwright's own screenshot
- * assertion names its baselines, so two blocks each holding a test called
- * "shot" do not write over one baseline. The first element is the file, which
- * `snapshotPath` already places the baseline under.
- */
-export function defaultName(info: TestInfo): string {
-  const next = (ordinals.get(info) ?? 0) + 1;
-  ordinals.set(info, next);
-  const slug = info.titlePath
-    .slice(1)
-    .join(' ')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-  return `${slug}-${String(next)}.png`;
 }

@@ -1,12 +1,12 @@
-import { test as base, type TestInfo } from '@playwright/test';
+import { test as base, type WorkerInfo } from '@playwright/test';
 import { parseDeviceOptions, TOUCHPRESS_DEFAULTS, type TouchpressOptions } from '../core/config.ts';
 import { withAi, type AiDevice } from '../ai/device.ts';
 import type { AiOptions } from '../ai/options.ts';
 import { createDevice, type Device } from '../core/device.ts';
-import { captureEvidence } from '../core/evidence.ts';
-import { silentSink, type ActionSink, type EvidenceFile } from '../core/report.ts';
+import { captureEvidence, evidenceWanted } from '../core/evidence.ts';
 import { openSession, type DeviceSession } from '../core/session.ts';
 import { createAgentDeviceDriver, createClient } from '../driver/agent-device.ts';
+import { playwrightSink } from './sink.ts';
 
 const SESSION_FIXTURE_TIMEOUT_MS = 180_000;
 // The per-test relaunch and the evidence capture run in this fixture, not the test body, so it
@@ -38,9 +38,6 @@ export const setupTest = base.extend<object, TouchpressOptions & AiOptions>({
   // Unset rather than a plausible default, because there is no model this library could pick.
   aiModel: [undefined, { option: true, scope: 'worker' }],
 });
-
-/** The worker session already opened the app with a relaunch, so the first test skips one. */
-const startedTests = new WeakSet<DeviceSession>();
 
 /**
  * `device` is auto so evidence capture runs for every test in a device project,
@@ -84,8 +81,9 @@ export const test = setupTest.extend<{ device: Device & AiDevice }, { session: D
         dismissDevOverlay,
         evidence,
         sessionPrefix,
-        // Playwright's own option rather than one of touchpress's, so it is read off the project.
+        // Playwright's own options rather than touchpress's, so they are read off the project.
         actionTimeout: workerInfo.project.use.actionTimeout,
+        expectTimeout: projectExpectTimeout(workerInfo),
       });
       const session = await openSession({
         options,
@@ -106,55 +104,30 @@ export const test = setupTest.extend<{ device: Device & AiDevice }, { session: D
   device: [
     async ({ session, aiModel }, use, testInfo) => {
       const sink = playwrightSink();
-      if (session.options.relaunch === 'per-test' && startedTests.has(session)) {
-        await session.relaunch(sink);
-      }
-      startedTests.add(session);
+      await session.beginTest(sink);
 
       await use(withAi(createDevice(session, sink), session, sink, aiModel));
 
-      if (shouldCapture(testInfo, session.options.evidence)) await captureEvidence(session, sink);
+      // `expectedStatus` is what makes `test.fail()` an expected outcome that captures nothing.
+      if (evidenceWanted(session.options.evidence, testInfo.status !== testInfo.expectedStatus)) {
+        await captureEvidence(session, sink);
+      }
     },
     { auto: true, timeout: DEVICE_FIXTURE_TIMEOUT_MS },
   ],
 });
 
-function shouldCapture(testInfo: TestInfo, evidence: 'on-failure' | 'always' | 'off'): boolean {
-  if (evidence === 'off') return false;
-  return evidence === 'always' || testInfo.status !== testInfo.expectedStatus;
-}
-
 /**
- * Resolves the running test on every call rather than capturing a `TestInfo`. A
- * worker outlives every test in it, so a captured one would file the second
- * test's evidence under the first test's report entry.
+ * Playwright hands the merged `expect.timeout` to a matcher as `this.timeout`
+ * and exposes it nowhere public. The internal project the worker info wraps
+ * carries it, so it is read from there as a raw value for the parser. A
+ * Playwright release that moves it leaves `expectTimeout` at Playwright's own
+ * default, and the adapter's own suite pins the read.
  */
-export function playwrightSink(): ActionSink {
-  return {
-    step: (title, body, options) => base.step(title, body, options),
-    attach: async (file: EvidenceFile) => {
-      const info = currentTest();
-      if (info === null) return;
-      await info.attach(
-        file.name,
-        'path' in file
-          ? { path: file.path, contentType: file.contentType }
-          : { body: file.body, contentType: file.contentType },
-      );
-    },
-    note: (key, value) => {
-      currentTest()?.annotations.push({ type: key, description: value });
-    },
-    outputPath: (fileName) =>
-      currentTest()?.outputPath(fileName) ?? silentSink.outputPath(fileName),
-  };
-}
-
-function currentTest(): TestInfo | null {
-  try {
-    return base.info();
-  } catch {
-    // `test.info()` throws outside test execution, which is not a reason to fail a device command.
-    return null;
-  }
+function projectExpectTimeout(workerInfo: WorkerInfo): unknown {
+  const internal: unknown = Reflect.get(workerInfo, '_projectInternal');
+  if (typeof internal !== 'object' || internal === null) return undefined;
+  const expect: unknown = Reflect.get(internal, 'expect');
+  if (typeof expect !== 'object' || expect === null) return undefined;
+  return Reflect.get(expect, 'timeout');
 }
