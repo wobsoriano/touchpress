@@ -11,7 +11,7 @@ beforeAll(() => {
   opensBefore = opens();
 });
 
-test('overriding aiModel by value delivers the object on the one session this worker holds', async ({
+test('overriding aiModel by value delivers the object on the one session this worker holds', ({
   device,
   aiModel,
 }) => {
@@ -19,11 +19,9 @@ test('overriding aiModel by value delivers the object on the one session this wo
   expect(device.options.app).toBe('com.example.app');
   expect(sessionOpens()).toBe(1);
   expect(opens()).toBe(opensBefore + 1);
-  await Promise.resolve();
 });
 
-test('a second file still relaunches per test rather than opening a session', async () => {
+test('a second file still relaunches per test rather than opening a session', () => {
   expect(sessionOpens()).toBe(1);
   expect(opens()).toBe(opensBefore + 2);
-  await Promise.resolve();
 });

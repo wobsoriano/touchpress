@@ -30,10 +30,9 @@ test('the first test costs one open, on the one session this worker holds', asyn
   expect(waited).toBeLessThan(1500);
 });
 
-test('the second test relaunches on the way in, on the same session', async () => {
+test('the second test relaunches on the way in, on the same session', () => {
   expect(sessionOpens()).toBe(1);
   expect(opens()).toBe(opensBefore + 2);
-  await Promise.resolve();
 });
 
 defineContract({ test, expect });
@@ -125,9 +124,8 @@ test.fails('an expected failure ends as expected', async ({ device }) => {
   await expect(device.getByText('Sign out')).toBeVisible({ timeout: 100 });
 });
 
-test('an expected failure attaches nothing', async () => {
+test('an expected failure attaches nothing', () => {
   expect(screenshots().length).toBe(screenshotsBeforeExpectedFailure);
-  await Promise.resolve();
 });
 
 test('an unnamed screenshot writes its baseline next to the spec on the first run and matches on the second', async ({

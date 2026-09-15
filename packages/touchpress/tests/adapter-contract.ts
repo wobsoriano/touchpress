@@ -17,7 +17,7 @@ export type ContractAssertion = {
 export type Contract = {
   readonly test: (
     name: string,
-    body: (context: { device: Device & AiDevice }) => Promise<void>,
+    body: (context: { device: Device & AiDevice }) => void | Promise<void>,
   ) => void;
   readonly expect: (locator: Locator) => ContractAssertion;
 };
@@ -65,9 +65,8 @@ export function defineContract({ test, expect }: Contract): void {
     assert.match(error.message, /Expected: not visible/);
   });
 
-  test('the device carries the resolved options a spec may read', async ({ device }) => {
+  test('the device carries the resolved options a spec may read', ({ device }) => {
     assert.equal(device.options.platform, 'ios');
     assert.equal(device.options.app, 'com.example.app');
-    await Promise.resolve();
   });
 }
