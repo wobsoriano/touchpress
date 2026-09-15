@@ -62,6 +62,7 @@ A skipped test opens no session, because touchpress's `device` fixture is never 
 | `app`               | required       | bundle id or package name, never a path to an artifact                                  |
 | `readyWhen`         | required       | the locator that means the bundle loaded. `{ text }`, `{ testId }`, or `{ role, name }` |
 | `deviceName`        | first booted   | device name. An array is a pool indexed by Playwright's `parallelIndex`                 |
+| `cloud`             | none           | run on a hosted device. `'browserstack'`, `'aws-device-farm'`, or `'limrun'`            |
 | `launchUrl`         | none           | a deep link to launch the app with, on the launch and on every relaunch                 |
 | `relaunch`          | `'per-test'`   | or `'per-worker'`                                                                       |
 | `onDeviceInUse`     | `'fail'`       | or `'reclaim'`. Leftovers carrying touchpress's own prefix are always reclaimed         |
@@ -70,6 +71,20 @@ A skipped test opens no session, because touchpress's `device` fixture is never 
 | `dismissDevOverlay` | `false`        | send `react-native dismiss-overlay` after every launch                                  |
 | `evidence`          | `'on-failure'` | `'always'` or `'off'`                                                                   |
 | `sessionPrefix`     | `'touchpress'` | session names are `${prefix}-${project}-${parallelIndex}`                               |
+
+## Running on a hosted device
+
+`cloud` moves a project off the local simulator or emulator and onto a hosted device. It is one key holding the whole target, so a project swaps providers in a single write and two providers can never merge into one. Credentials stay out of the config, because agent-device reads them from the environment.
+
+```ts
+use: {
+  platform: 'android',
+  deviceName: 'Google Pixel 8',
+  cloud: { provider: 'browserstack', app: 'bs://a1b2c3', osVersion: '14.0' },
+}
+```
+
+What `deviceName` selects, what preflight can check, and which local behaviours stop applying all depend on the provider. See [Cloud devices](https://github.com/wobsoriano/touchpress/blob/main/docs/cloud.md).
 
 ## How long one action waits
 

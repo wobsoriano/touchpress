@@ -3,7 +3,7 @@
 > [!WARNING]
 > This codebase was largely written by an LLM, supervised by a human maintainer. It is highly experimental. Use at your own risk.
 
-touchpress runs e2e tests for mobile apps on the Playwright test runner. It drives a booted simulator or emulator through [`agent-device`](https://agent-device.dev/).
+touchpress runs e2e tests for mobile apps on the Playwright test runner. It drives a booted simulator or emulator, or a hosted device on BrowserStack, AWS Device Farm, or Limrun, through [`agent-device`](https://agent-device.dev/).
 
 ```ts
 import { expect, test } from 'touchpress';
@@ -73,6 +73,7 @@ See [apps/e2e](https://github.com/wobsoriano/touchpress/tree/main/apps/e2e#build
 
 - [Basics](https://github.com/wobsoriano/touchpress/blob/main/docs/basics.md)
 - [Configuration](https://github.com/wobsoriano/touchpress/blob/main/docs/configuration.md)
+- [Cloud devices](https://github.com/wobsoriano/touchpress/blob/main/docs/cloud.md)
 - [Locators](https://github.com/wobsoriano/touchpress/blob/main/docs/locators.md)
 - [Assertions](https://github.com/wobsoriano/touchpress/blob/main/docs/assertions.md)
 - [AI](https://github.com/wobsoriano/touchpress/blob/main/docs/ai.md)
