@@ -217,7 +217,6 @@ function filesOnly(sink: VitestSink): VitestSink {
 /** Just enough of Vitest's `Test` for the predicate to be unit-testable without a runner. */
 export type TaskView = {
   readonly result?: { readonly state?: string };
-  /** True for `test.fails(...)`. */
   readonly fails?: boolean;
 };
 

@@ -68,7 +68,6 @@ export type ScreenshotRequest = {
   /** The resolved path of the committed PNG. The adapter names it, so core mints nothing. */
   readonly baseline: string;
   readonly options: ScreenshotOptions;
-  /** True when the caller wrote `.not`. */
   readonly negate: boolean;
   readonly timeoutMs: number;
   readonly policy: BaselinePolicy;

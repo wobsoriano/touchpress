@@ -2,7 +2,6 @@ import { basename, dirname, extname, join, resolve } from 'node:path';
 
 /** Just enough of Vitest's `Test` to name a file and a test. Structural, so no runner type crosses this module. */
 export type TestIdentity = {
-  /** Absolute. `task.file.filepath`. */
   readonly filepath: string;
   /** `task.file.projectName`, or `''` for an unnamed project, which adds no suffix. */
   readonly projectName: string;
@@ -47,7 +46,6 @@ export function defaultName(test: TestIdentity, ordinal: number): string {
   return `${slug(test.titlePath.join(' '))}-${String(ordinal)}.png`;
 }
 
-/** Lowercase, non-alphanumerics collapsed to `-`, trimmed. */
 export function slug(text: string): string {
   return text
     .toLowerCase()
@@ -55,7 +53,6 @@ export function slug(text: string): string {
     .replace(/^-|-$/g, '');
 }
 
-/** `login.spec.mts` reads as `login`, the way Playwright's output directory names it. */
 function specSlug(filepath: string): string {
   return slug(basename(filepath).replace(/\.(spec|test)\.[cm]?[jt]sx?$/, ''));
 }

@@ -87,7 +87,6 @@ export function createTest(createDriver: DriverFactory) {
           dismissDevOverlay,
           evidence,
           sessionPrefix,
-          // Playwright's own option rather than touchpress's, so it is read off the project.
           actionTimeout: workerInfo.project.use.actionTimeout,
         });
         const session = await openSession({

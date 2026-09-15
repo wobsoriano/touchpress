@@ -17,7 +17,6 @@ const aiModel =
 export default defineConfig({
   test: {
     include: ['e2e-vitest/**/*.spec.mts'],
-    // The deliberate-failure spec stays out of the default run. Include it with TOUCHPRESS_INCLUDE_FAILING=1.
     exclude: process.env['TOUCHPRESS_INCLUDE_FAILING'] === '1' ? [] : ['**/failing.spec.mts'],
     provide: { app, readyWhen, expectTimeout: 10_000, aiModel },
     // One device, one session, one worker. The session lives in the worker's module registry,
@@ -28,7 +27,7 @@ export default defineConfig({
     // The first test in a worker pays the launch and the ready gate, and every later one pays a
     // relaunch, all inside the test's own budget. Playwright bills those to its fixtures instead.
     testTimeout: 180_000,
-    // A second line of defense on a shared runner, not the fix. A retry reuses the worker's session.
+    // A retry reuses the worker's session.
     retry: process.env['CI'] ? 1 : 0,
     projects: [
       {

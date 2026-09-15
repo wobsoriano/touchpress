@@ -101,7 +101,6 @@ export function createVitestSink(input: {
   };
 }
 
-/** One line per step, indented by depth, the way a reporter would show a step tree. */
 export function renderTrail(lines: readonly TrailLine[]): string {
   return lines
     .map(

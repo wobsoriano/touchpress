@@ -23,8 +23,7 @@ export default defineConfig({
         test: {
           name: 'unit',
           // The device specs in e2e/ and e2e-vitest/ and the Playwright harness in
-          // tests/playwright-adapter/ need a device or `playwright test`. The Vitest adapter
-          // harness has its own project.
+          // tests/playwright-adapter/ need a device or `playwright test`.
           exclude: [
             '**/node_modules/**',
             '**/dist/**',

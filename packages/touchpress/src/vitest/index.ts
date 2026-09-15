@@ -1,5 +1,5 @@
 /**
- * `touchpress/vitest`. The same authoring experience on Vitest 4 and 5.
+ * `touchpress/vitest`.
  *
  * ```ts
  * import { expect, test } from 'touchpress/vitest';

@@ -1,6 +1,5 @@
 /**
- * `touchpress/playwright`. What the root entry exported before the split, and
- * the only entry that names Playwright.
+ * `touchpress/playwright`. The only entry that names Playwright.
  *
  * `defineConfig` is not re-exported. A config imports it from `@playwright/test`
  * and parameterizes it with `TouchpressOptions` from here, which keeps this
