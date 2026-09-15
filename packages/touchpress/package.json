@@ -39,7 +39,7 @@
     "prepublishOnly": "vp run build"
   },
   "dependencies": {
-    "agent-device": "0.21.1",
+    "agent-device": "0.21.2",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0"
   },
