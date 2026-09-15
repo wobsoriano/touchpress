@@ -773,3 +773,74 @@ test('textContent refuses an ambiguous locator and lists every match', async () 
   expect(error.message).toContain(`@e12 [text] "Explore"`);
   expect(error.message).toContain(`@e35 [button] "Explore"`);
 });
+
+test('a Limrun session installs the app on its first open and not on the relaunch', async () => {
+  const driver = createFakeDriver();
+  const session = await open(driver, {
+    deviceName: undefined,
+    cloud: { provider: 'limrun', install: './build/app.app' },
+  });
+  await session.relaunch(silentSink);
+  expect(driver.calls.filter((call) => call.startsWith('open'))).toEqual([
+    'open com.wobsoriano.awesometodo relaunch=true install=./build/app.app',
+    'open com.wobsoriano.awesometodo relaunch=true',
+  ]);
+});
+
+test('a cloud session records the provider it opened on', async () => {
+  const notes: string[] = [];
+  const sink = {
+    ...silentSink,
+    note: (key: string, value: string) => notes.push(`${key} ${value}`),
+  };
+  await openSession({
+    options: parseDeviceOptions({
+      ...options,
+      deviceName: undefined,
+      cloud: { provider: 'limrun', install: './build/app.app' },
+    }),
+    slot: 0,
+    scope: 'ios',
+    sink,
+    createDriver: () => createFakeDriver(),
+  });
+  expect(notes).toContain('cloud limrun');
+});
+
+test('a cloud session resets no keychain and says why', async () => {
+  const notes: string[] = [];
+  const sink = {
+    ...createRecordingSink(),
+    note: (key: string, value: string) => notes.push(`${key} ${value}`),
+  };
+  const driver = createFakeDriver();
+  const session = await open(driver, {
+    deviceName: 'Google Pixel 8',
+    platform: 'android',
+    cloud: { provider: 'browserstack', app: 'bs://abc', osVersion: '14.0' },
+  });
+  driver.calls.length = 0;
+
+  await session.clearKeychain(sink);
+
+  expect(driver.calls).toEqual(['resetKeychain']);
+  expect(notes).toEqual([
+    'keychain nothing to reset on Android, clearing state covers the keystore',
+  ]);
+});
+
+test('an iOS keychain reset on a hosted device is reported as the no-op it is', async () => {
+  const notes: string[] = [];
+  const sink = {
+    ...createRecordingSink(),
+    note: (key: string, value: string) => notes.push(`${key} ${value}`),
+  };
+  const session = await open(createFakeDriver(), {
+    deviceName: 'iPhone 15',
+    cloud: { provider: 'browserstack', app: 'bs://abc', osVersion: '17' },
+  });
+
+  await session.clearKeychain(sink);
+
+  expect(notes).toEqual(['keychain keychain reset needs a local iOS simulator, nothing was reset']);
+});
