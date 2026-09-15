@@ -1,3 +1,4 @@
+import type { Target } from './config.ts';
 import type { PinnedRef, Platform, RawSnapshot } from './screen.ts';
 
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
@@ -16,6 +17,8 @@ export type BackMode = 'in-app' | 'system';
 export type DeviceSelection = {
   readonly platform: Platform;
   readonly name: string | null;
+  /** Where the session runs. A driver reads it to skip what only a local device supports. */
+  readonly target: Target;
 };
 
 /** One device the driver can see. Only the fields preflight needs, so no agent-device device shape crosses here. */
@@ -31,6 +34,11 @@ export type OpenRequest = {
   readonly relaunch: boolean;
   /** A deep link to launch the app with, or null to launch it plainly. */
   readonly url: string | null;
+  /**
+   * The artifact to install before launching, or null when the app is already on the device.
+   * A freshly allocated hosted instance carries no app, so its first open has to put one there.
+   */
+  readonly install: string | null;
 };
 
 /** Proof that a device is bound. Only `open` mints one, so a believed binding cannot drift from a real one. */

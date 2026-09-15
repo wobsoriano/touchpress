@@ -14,7 +14,7 @@ test('parse fills every default', () => {
   expect(options.dismissDevOverlay).toBe(false);
   expect(options.evidence).toBe('on-failure');
   expect(options.sessionPrefix).toBe('touchpress');
-  expect(options.device).toEqual({ kind: 'first-booted' });
+  expect(options.target).toEqual({ kind: 'local', device: { kind: 'first-booted' } });
   expect(options.launchUrl).toBe(null);
 });
 
@@ -99,4 +99,174 @@ test('aiModel rides along in `use` without reaching the resolved device options'
   const options = parseDeviceOptions({ ...minimal, aiModel: 'anthropic/claude-sonnet-4.5' });
   expect(options.app).toBe('com.example.app');
   expect(Object.keys(options)).not.toContain('aiModel');
+});
+
+const browserstack = {
+  ...minimal,
+  platform: 'android',
+  deviceName: 'Google Pixel 8',
+  cloud: { provider: 'browserstack', app: 'bs://abc123', osVersion: '14.0' },
+} as const;
+
+test('a BrowserStack target carries its app and version, and every unset field is null', () => {
+  expect(parseDeviceOptions(browserstack).target).toEqual({
+    kind: 'browserstack',
+    device: { kind: 'named', name: 'Google Pixel 8' },
+    app: 'bs://abc123',
+    osVersion: '14.0',
+    project: null,
+    build: null,
+    sessionName: null,
+    orientation: null,
+    geoLocation: null,
+    timezone: null,
+    language: null,
+    locale: null,
+    networkProfile: null,
+    customNetwork: null,
+    noResignApp: false,
+  });
+});
+
+test('every BrowserStack option a project sets reaches the target', () => {
+  const target = parseDeviceOptions({
+    ...browserstack,
+    cloud: {
+      ...browserstack.cloud,
+      project: 'checkout',
+      build: '4711',
+      sessionName: 'sign in',
+      orientation: 'landscape',
+      geoLocation: 'FR',
+      timezone: 'Europe/Paris',
+      language: 'fr',
+      locale: 'fr_FR',
+      networkProfile: '4g-lte-lossy',
+      noResignApp: true,
+    },
+  }).target;
+  expect(target).toEqual(
+    expect.objectContaining({
+      project: 'checkout',
+      build: '4711',
+      sessionName: 'sign in',
+      orientation: 'landscape',
+      geoLocation: 'FR',
+      timezone: 'Europe/Paris',
+      language: 'fr',
+      locale: 'fr_FR',
+      networkProfile: '4g-lte-lossy',
+      customNetwork: null,
+      noResignApp: true,
+    }),
+  );
+});
+
+test('an AWS Device Farm target carries both ARNs and defaults the rest to null', () => {
+  const target = parseDeviceOptions({
+    ...minimal,
+    platform: 'android',
+    cloud: { provider: 'aws-device-farm', projectArn: 'arn:project', deviceArn: 'arn:device' },
+  }).target;
+  expect(target).toEqual({
+    kind: 'aws-device-farm',
+    projectArn: 'arn:project',
+    deviceArn: 'arn:device',
+    appArn: null,
+    region: null,
+    interactionMode: null,
+    sessionName: null,
+  });
+});
+
+test('a Limrun target carries only the artifact to install', () => {
+  const target = parseDeviceOptions({
+    ...minimal,
+    cloud: { provider: 'limrun', install: './app.app' },
+  }).target;
+  expect(target).toEqual({ kind: 'limrun', install: './app.app' });
+});
+
+test('every cloud field names itself when it is missing or wrong', () => {
+  expect(() => parseDeviceOptions({ ...minimal, cloud: { provider: 'saucelabs' } })).toThrow(
+    /use\.cloud\.provider/,
+  );
+  expect(() =>
+    parseDeviceOptions({ ...browserstack, cloud: { provider: 'browserstack', osVersion: '14.0' } }),
+  ).toThrow(/use\.cloud\.app/);
+  expect(() =>
+    parseDeviceOptions({ ...browserstack, cloud: { provider: 'browserstack', app: 'bs://a' } }),
+  ).toThrow(/use\.cloud\.osVersion/);
+  expect(() =>
+    parseDeviceOptions({ ...minimal, cloud: { provider: 'aws-device-farm', deviceArn: 'arn:d' } }),
+  ).toThrow(/use\.cloud\.projectArn/);
+  expect(() =>
+    parseDeviceOptions({ ...minimal, cloud: { provider: 'aws-device-farm', projectArn: 'arn:p' } }),
+  ).toThrow(/use\.cloud\.deviceArn/);
+  expect(() => parseDeviceOptions({ ...minimal, cloud: { provider: 'limrun' } })).toThrow(
+    /use\.cloud\.install/,
+  );
+  expect(() =>
+    parseDeviceOptions({
+      ...browserstack,
+      cloud: { ...browserstack.cloud, orientation: 'sideways' },
+    }),
+  ).toThrow(/use\.cloud\.orientation/);
+});
+
+test('a named network profile and a custom network cannot both be set', () => {
+  expect(() =>
+    parseDeviceOptions({
+      ...browserstack,
+      cloud: { ...browserstack.cloud, networkProfile: '4g-lte', customNetwork: '1000 1000 50 0' },
+    }),
+  ).toThrow(/use\.cloud\.networkProfile/);
+});
+
+test('deviceName means something different on every target, and says so when it is wrong', () => {
+  expect(() => parseDeviceOptions({ ...browserstack, deviceName: undefined })).toThrow(
+    /use\.deviceName.+BrowserStack/s,
+  );
+  expect(() =>
+    parseDeviceOptions({
+      ...minimal,
+      deviceName: 'arn:device',
+      cloud: { provider: 'aws-device-farm', projectArn: 'arn:p', deviceArn: 'arn:d' },
+    }),
+  ).toThrow(/use\.deviceName.+cloud\.deviceArn/s);
+  expect(() =>
+    parseDeviceOptions({
+      ...minimal,
+      deviceName: 'whatever',
+      cloud: { provider: 'limrun', install: './app.app' },
+    }),
+  ).toThrow(/use\.deviceName.+Limrun/s);
+});
+
+test('one BrowserStack device name serves every worker, because each opens its own hosted session', () => {
+  const single = parseDeviceOptions(browserstack);
+  expect(deviceNameForSlot(single, 0)).toBe('Google Pixel 8');
+  expect(deviceNameForSlot(single, 1)).toBe('Google Pixel 8');
+  expect(deviceNameForSlot(single, 2)).toBe('Google Pixel 8');
+
+  const pool = parseDeviceOptions({
+    ...browserstack,
+    deviceName: ['Google Pixel 8', 'Samsung Galaxy S23'],
+  });
+  expect(deviceNameForSlot(pool, 0)).toBe('Google Pixel 8');
+  expect(deviceNameForSlot(pool, 1)).toBe('Samsung Galaxy S23');
+  expect(() => deviceNameForSlot(pool, 2)).toThrow(/worker slot 2/);
+});
+
+test('a target that picks its own device names none for any slot', () => {
+  const aws = parseDeviceOptions({
+    ...minimal,
+    cloud: { provider: 'aws-device-farm', projectArn: 'arn:p', deviceArn: 'arn:d' },
+  });
+  const limrun = parseDeviceOptions({
+    ...minimal,
+    cloud: { provider: 'limrun', install: './app.app' },
+  });
+  expect(deviceNameForSlot(aws, 3)).toBe(null);
+  expect(deviceNameForSlot(limrun, 3)).toBe(null);
 });

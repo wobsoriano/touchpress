@@ -20,8 +20,18 @@ export type TouchpressOptions = {
    * this gate the first assertion would race the JavaScript bundle.
    */
   readyWhen: ReadyQuery | undefined;
-  /** Device name. An array is a pool indexed by the runner's worker slot. Unset means the first booted device. */
+  /**
+   * Device name. An array is a pool indexed by the runner's worker slot. Unset means the first
+   * booted device. What it selects depends on `cloud`, so read that key's documentation too.
+   */
   deviceName: string | readonly string[] | undefined;
+  /**
+   * The hosted provider to run on. Unset runs on a local simulator or emulator.
+   *
+   * One key rather than one per field, so a project replaces the whole target in a single write
+   * and Playwright's per-key `use` merge can never blend two providers.
+   */
+  cloud: CloudOptions | undefined;
   /**
    * A deep link to open the app with, on the launch and on every relaunch.
    * Unset launches the app plainly, which is what a release build wants. An
@@ -52,7 +62,7 @@ export type TouchpressOptions = {
  */
 export const TOUCHPRESS_DEFAULTS: Omit<
   TouchpressOptions,
-  'platform' | 'app' | 'readyWhen' | 'deviceName' | 'launchUrl'
+  'platform' | 'app' | 'readyWhen' | 'deviceName' | 'launchUrl' | 'cloud'
 > = {
   relaunch: 'per-test',
   onDeviceInUse: 'fail',
@@ -81,12 +91,85 @@ export type DeviceChoice =
   | { readonly kind: 'named'; readonly name: string }
   | { readonly kind: 'pool'; readonly names: readonly string[] };
 
+/**
+ * What `use.cloud` accepts. agent-device reads every credential from the environment itself, so
+ * nothing here is a secret.
+ */
+export type CloudOptions =
+  | {
+      provider: 'browserstack';
+      /** bs:// reference, HTTP(S) URL, or local path. BrowserStack uploads a local path when it creates the session. */
+      app: string;
+      osVersion: string;
+      project?: string;
+      build?: string;
+      sessionName?: string;
+      orientation?: 'portrait' | 'landscape';
+      geoLocation?: string;
+      timezone?: string;
+      language?: string;
+      locale?: string;
+      networkProfile?: string;
+      customNetwork?: string;
+      noResignApp?: boolean;
+    }
+  | {
+      provider: 'aws-device-farm';
+      projectArn: string;
+      deviceArn: string;
+      appArn?: string;
+      /** Falls back to AWS_REGION / AWS_DEFAULT_REGION in the environment. */
+      region?: string;
+      interactionMode?: 'INTERACTIVE' | 'NO_VIDEO' | 'VIDEO_ONLY';
+      sessionName?: string;
+    }
+  | {
+      provider: 'limrun';
+      /** Local path or URL of the app artifact, installed on the fresh instance before the first launch. */
+      install: string;
+    };
+
+/**
+ * Where the suite runs, with every optional field resolved. The device selector is part of the
+ * target rather than a sibling of it, because what a device name means is the target's to say.
+ * BrowserStack needs one, AWS names its device by ARN, and Limrun takes none at all.
+ */
+export type Target =
+  | { readonly kind: 'local'; readonly device: DeviceChoice }
+  | {
+      readonly kind: 'browserstack';
+      readonly device: Extract<DeviceChoice, { kind: 'named' | 'pool' }>;
+      readonly app: string;
+      readonly osVersion: string;
+      readonly project: string | null;
+      readonly build: string | null;
+      readonly sessionName: string | null;
+      readonly orientation: 'portrait' | 'landscape' | null;
+      readonly geoLocation: string | null;
+      readonly timezone: string | null;
+      readonly language: string | null;
+      readonly locale: string | null;
+      readonly networkProfile: string | null;
+      readonly customNetwork: string | null;
+      readonly noResignApp: boolean;
+    }
+  | {
+      readonly kind: 'aws-device-farm';
+      readonly projectArn: string;
+      readonly deviceArn: string;
+      readonly appArn: string | null;
+      readonly region: string | null;
+      readonly interactionMode: 'INTERACTIVE' | 'NO_VIDEO' | 'VIDEO_ONLY' | null;
+      readonly sessionName: string | null;
+    }
+  | { readonly kind: 'limrun'; readonly install: string };
+
 /** Every optional field resolved. Constructed only by `parseDeviceOptions`, so internal code trusts it. */
 export type ResolvedOptions = {
   readonly platform: Platform;
   readonly app: string;
   readonly readyWhen: Query;
-  readonly device: DeviceChoice;
+  readonly target: Target;
   readonly launchUrl: string | null;
   readonly relaunch: 'per-test' | 'per-worker';
   readonly onDeviceInUse: 'fail' | 'reclaim';
@@ -135,7 +218,7 @@ export function parseDeviceOptions(raw: unknown): ResolvedOptions {
     platform,
     app,
     readyWhen: parseReadyWhen(read(raw, 'readyWhen')),
-    device: parseDeviceChoice(read(raw, 'deviceName')),
+    target: parseTarget(read(raw, 'cloud'), read(raw, 'deviceName')),
     launchUrl: optionalText('launchUrl', read(raw, 'launchUrl')),
     relaunch: oneOf(
       'relaunch',
@@ -241,14 +324,137 @@ function isStringArray(raw: unknown): raw is readonly string[] {
   return Array.isArray(raw) && raw.every((entry) => typeof entry === 'string');
 }
 
+const PROVIDERS = ['browserstack', 'aws-device-farm', 'limrun'] as const;
+
+function parseTarget(cloud: unknown, deviceName: unknown): Target {
+  if (cloud === undefined) return { kind: 'local', device: parseDeviceChoice(deviceName) };
+  const at = (key: string): unknown => read(cloud, key);
+  const optional = (key: string): string | null => optionalText(`cloud.${key}`, at(key));
+
+  switch (oneOf('cloud.provider', at('provider'), PROVIDERS)) {
+    case 'browserstack': {
+      const networkProfile = optional('networkProfile');
+      const customNetwork = optional('customNetwork');
+      if (networkProfile !== null && customNetwork !== null) {
+        throw fail(
+          'cloud.networkProfile',
+          'and use.cloud.customNetwork cannot both be set. Choose a named profile or a custom network.',
+        );
+      }
+      return {
+        kind: 'browserstack',
+        device: browserstackDevice(deviceName),
+        app: required(
+          'cloud.app',
+          at('app'),
+          'is required. Give a bs:// reference, an HTTP(S) URL, or a local path to the app artifact.',
+        ),
+        osVersion: required(
+          'cloud.osVersion',
+          at('osVersion'),
+          "is required. Name the OS version BrowserStack lists for the device, such as '14.0'.",
+        ),
+        project: optional('project'),
+        build: optional('build'),
+        sessionName: optional('sessionName'),
+        orientation: optionalOneOf('cloud.orientation', at('orientation'), [
+          'portrait',
+          'landscape',
+        ]),
+        geoLocation: optional('geoLocation'),
+        timezone: optional('timezone'),
+        language: optional('language'),
+        locale: optional('locale'),
+        networkProfile,
+        customNetwork,
+        noResignApp: flag('cloud.noResignApp', at('noResignApp'), false),
+      };
+    }
+    case 'aws-device-farm':
+      if (deviceName !== undefined) {
+        throw fail(
+          'deviceName',
+          'must not be set on AWS Device Farm. The device is named by use.cloud.deviceArn.',
+        );
+      }
+      return {
+        kind: 'aws-device-farm',
+        projectArn: required(
+          'cloud.projectArn',
+          at('projectArn'),
+          'is required. Copy the ARN of the AWS Device Farm project to run in.',
+        ),
+        deviceArn: required(
+          'cloud.deviceArn',
+          at('deviceArn'),
+          'is required. Copy the ARN of the AWS Device Farm device to run on.',
+        ),
+        appArn: optional('appArn'),
+        region: optional('region'),
+        interactionMode: optionalOneOf('cloud.interactionMode', at('interactionMode'), [
+          'INTERACTIVE',
+          'NO_VIDEO',
+          'VIDEO_ONLY',
+        ]),
+        sessionName: optional('sessionName'),
+      };
+    case 'limrun':
+      if (deviceName !== undefined) {
+        throw fail(
+          'deviceName',
+          'must not be set on Limrun. Limrun allocates a fresh instance and takes no device selector.',
+        );
+      }
+      return {
+        kind: 'limrun',
+        install: required(
+          'cloud.install',
+          at('install'),
+          'is required. Give the local path or URL of the app artifact. A fresh Limrun instance has no app on it.',
+        ),
+      };
+  }
+}
+
+function browserstackDevice(raw: unknown): Extract<DeviceChoice, { kind: 'named' | 'pool' }> {
+  const choice = parseDeviceChoice(raw);
+  if (choice.kind === 'first-booted') {
+    throw fail(
+      'deviceName',
+      "is required on BrowserStack. Name the device exactly as BrowserStack lists it, such as 'Google Pixel 8'.",
+    );
+  }
+  return choice;
+}
+
 /**
- * Anything but a pool serves slot 0 only. Two workers pointed at one device both
+ * Locally, anything but a pool serves slot 0 only. Two workers pointed at one device both
  * try to claim it, and because leftovers carrying this library's session prefix
  * are always reclaimed, the second worker would close the first worker's live
  * session mid-test. That has to be a config error, not a race.
+ *
+ * That rule does not reach BrowserStack, where each worker opens its own hosted session on the
+ * named device model rather than sharing one device.
  */
 export function deviceNameForSlot(options: ResolvedOptions, slot: number): string | null {
-  const choice = options.device;
+  const target = options.target;
+  switch (target.kind) {
+    case 'local':
+      return localDeviceForSlot(target.device, slot);
+    case 'browserstack':
+      if (target.device.kind === 'named') return target.device.name;
+      return fromPool(target.device.names, slot);
+    case 'aws-device-farm':
+    case 'limrun':
+      return null;
+    default: {
+      const never: never = target;
+      throw new Error(`unhandled target ${JSON.stringify(never)}`);
+    }
+  }
+}
+
+function localDeviceForSlot(choice: DeviceChoice, slot: number): string | null {
   switch (choice.kind) {
     case 'first-booted':
       if (slot > 0)
@@ -257,18 +463,19 @@ export function deviceNameForSlot(options: ResolvedOptions, slot: number): strin
     case 'named':
       if (slot > 0) throw tooFewDevices(`names one device, "${choice.name}"`, slot);
       return choice.name;
-    case 'pool': {
-      const name = choice.names[slot];
-      if (name === undefined) {
-        throw tooFewDevices(`lists ${String(choice.names.length)} devices`, slot);
-      }
-      return name;
-    }
+    case 'pool':
+      return fromPool(choice.names, slot);
     default: {
       const never: never = choice;
       throw new Error(`unhandled device choice ${JSON.stringify(never)}`);
     }
   }
+}
+
+function fromPool(names: readonly string[], slot: number): string {
+  const name = names[slot];
+  if (name === undefined) throw tooFewDevices(`lists ${String(names.length)} devices`, slot);
+  return name;
 }
 
 function tooFewDevices(problem: string, slot: number): TouchpressError {
@@ -278,17 +485,27 @@ function tooFewDevices(problem: string, slot: number): TouchpressError {
   );
 }
 
+/** No fallback makes the field required. */
 function oneOf<T extends string>(
   field: string,
   value: unknown,
   allowed: readonly T[],
-  fallback: T,
+  fallback?: T,
 ): T {
-  if (value === undefined) return fallback;
+  if (value === undefined && fallback !== undefined) return fallback;
   const found = allowed.find((candidate) => candidate === value);
   if (found === undefined)
     throw fail(field, `must be one of ${allowed.map((one) => `'${one}'`).join(', ')}.`);
   return found;
+}
+
+function optionalOneOf<T extends string>(
+  field: string,
+  value: unknown,
+  allowed: readonly T[],
+): T | null {
+  if (value === undefined) return null;
+  return oneOf(field, value, allowed);
 }
 
 function positive(field: string, value: unknown, fallback: number): number {
@@ -309,6 +526,12 @@ function optionalText(field: string, value: unknown): string | null {
   if (value === undefined) return null;
   if (typeof value !== 'string' || value.length === 0)
     throw fail(field, 'must be a non-empty string.');
+  return value;
+}
+
+/** Carries its own detail, because what to put in a required cloud field differs for every one of them. */
+function required(field: string, value: unknown, detail: string): string {
+  if (typeof value !== 'string' || value.length === 0) throw fail(field, detail);
   return value;
 }
 
