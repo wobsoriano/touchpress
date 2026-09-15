@@ -8,7 +8,7 @@ import type { DeviceDriver, DeviceInfo } from './core/driver.ts';
 import { describeFailure } from './core/errors.ts';
 import type { Platform } from './core/screen.ts';
 import { failureOf } from './core/session.ts';
-import { createAgentDeviceDriver, createClient } from './driver/agent-device.ts';
+import { agentDeviceDriver } from './driver/index.ts';
 
 export type PreflightDevice = { readonly name: string; readonly id: string };
 
@@ -28,7 +28,7 @@ export async function preflight(
   const resolved = parseDeviceOptions(options);
   const lister =
     driver ??
-    createAgentDeviceDriver(createClient(), `${resolved.sessionPrefix}-preflight`, {
+    agentDeviceDriver(`${resolved.sessionPrefix}-preflight`, {
       platform: resolved.platform,
       name: null,
     });

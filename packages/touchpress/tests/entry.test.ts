@@ -77,6 +77,7 @@ const ENTRIES: readonly EntryRule[] = [
     typeForbidden: [],
   },
   { entry: 'playwright/index.ts', forbidden: ['vitest'], typeForbidden: ['ai'] },
+  { entry: 'vitest/index.ts', forbidden: ['@playwright/test'], typeForbidden: ['ai'] },
 ];
 
 for (const rule of ENTRIES) {

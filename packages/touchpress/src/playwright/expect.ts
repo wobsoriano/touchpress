@@ -18,7 +18,7 @@ type MatcherResult = {
   actual: string | null;
 };
 
-/** The one mapping in this adapter. Core renders every message; this only reshapes it. */
+/** The one mapping in this adapter. Core renders every message and this only reshapes it. */
 function toMatcherResult(name: string, result: ProbeResult): MatcherResult {
   return {
     pass: result.pass,

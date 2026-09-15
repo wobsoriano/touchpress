@@ -73,6 +73,14 @@ export type DeviceFailure =
       readonly logPath: string | null;
     };
 
+/**
+ * How a session gets its driver. The session name and the device selection
+ * ride on the driver itself, so an open cannot name a different one. Both
+ * adapters default to the agent-device factory and their own suites inject
+ * `tests/fake-driver.ts` through the same seam.
+ */
+export type DriverFactory = (session: string, selection: DeviceSelection) => DeviceDriver;
+
 export type SettleOptions = {
   readonly settleQuietMs: number;
   readonly timeoutMs: number;

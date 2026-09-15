@@ -1,11 +1,12 @@
-import { test as base, type WorkerInfo } from '@playwright/test';
+import { test as base } from '@playwright/test';
 import { parseDeviceOptions, TOUCHPRESS_DEFAULTS, type TouchpressOptions } from '../core/config.ts';
 import { withAi, type AiDevice } from '../ai/device.ts';
 import type { AiOptions } from '../ai/options.ts';
 import { createDevice, type Device } from '../core/device.ts';
+import type { DriverFactory } from '../core/driver.ts';
 import { captureEvidence, evidenceWanted } from '../core/evidence.ts';
 import { openSession, type DeviceSession } from '../core/session.ts';
-import { createAgentDeviceDriver, createClient } from '../driver/agent-device.ts';
+import { agentDeviceDriver } from '../driver/index.ts';
 import { playwrightSink } from './sink.ts';
 
 const SESSION_FIXTURE_TIMEOUT_MS = 180_000;
@@ -40,6 +41,10 @@ export const setupTest = base.extend<object, TouchpressOptions & AiOptions>({
 });
 
 /**
+ * The seam the adapter's own suite drives the real fixtures through with
+ * `tests/fake-driver.ts`. Not on the public entry, which exports the `test`
+ * built on the agent-device factory below.
+ *
  * `device` is auto so evidence capture runs for every test in a device project,
  * whether or not the body touched it. Its teardown runs before the session's,
  * inside the separate budget Playwright grants after the test finishes, so a
@@ -48,84 +53,95 @@ export const setupTest = base.extend<object, TouchpressOptions & AiOptions>({
  * Importing and extending `test` launches no browser: `browser`, `context`, and
  * `page` are lazy and non-auto, and nothing here names them.
  */
-export const test = setupTest.extend<{ device: Device & AiDevice }, { session: DeviceSession }>({
-  session: [
-    async (
-      {
-        platform,
-        app,
-        readyWhen,
-        deviceName,
-        launchUrl,
-        relaunch,
-        onDeviceInUse,
-        settleQuietMs,
-        launchTimeout,
-        dismissDevOverlay,
-        evidence,
-        sessionPrefix,
+export function createTest(createDriver: DriverFactory) {
+  return setupTest.extend<{ device: Device & AiDevice }, { session: DeviceSession }>({
+    session: [
+      async (
+        {
+          platform,
+          app,
+          readyWhen,
+          deviceName,
+          launchUrl,
+          relaunch,
+          onDeviceInUse,
+          settleQuietMs,
+          launchTimeout,
+          dismissDevOverlay,
+          evidence,
+          sessionPrefix,
+        },
+        use,
+        workerInfo,
+      ) => {
+        const options = parseDeviceOptions({
+          platform,
+          app,
+          readyWhen,
+          deviceName,
+          launchUrl,
+          relaunch,
+          onDeviceInUse,
+          settleQuietMs,
+          launchTimeout,
+          dismissDevOverlay,
+          evidence,
+          sessionPrefix,
+          // Playwright's own options rather than touchpress's, so they are read off the project.
+          actionTimeout: workerInfo.project.use.actionTimeout,
+          expectTimeout: projectExpectTimeout(),
+        });
+        const session = await openSession({
+          options,
+          // `parallelIndex` and not `workerIndex`: Playwright discards a worker after any failure and
+          // the replacement reuses the same slot, so this is what makes a retry reuse the same device
+          // and reconnect to the same daemon session instead of stranding it.
+          slot: workerInfo.parallelIndex,
+          scope: workerInfo.project.name,
+          sink: playwrightSink(),
+          createDriver,
+        });
+        await use(session);
+        await session.close('worker-exit');
       },
-      use,
-      workerInfo,
-    ) => {
-      const options = parseDeviceOptions({
-        platform,
-        app,
-        readyWhen,
-        deviceName,
-        launchUrl,
-        relaunch,
-        onDeviceInUse,
-        settleQuietMs,
-        launchTimeout,
-        dismissDevOverlay,
-        evidence,
-        sessionPrefix,
-        // Playwright's own options rather than touchpress's, so they are read off the project.
-        actionTimeout: workerInfo.project.use.actionTimeout,
-        expectTimeout: projectExpectTimeout(workerInfo),
-      });
-      const session = await openSession({
-        options,
-        // `parallelIndex` and not `workerIndex`: Playwright discards a worker after any failure and
-        // the replacement reuses the same slot, so this is what makes a retry reuse the same device
-        // and reconnect to the same daemon session instead of stranding it.
-        slot: workerInfo.parallelIndex,
-        scope: workerInfo.project.name,
-        sink: playwrightSink(),
-        createDriver: (name, selection) => createAgentDeviceDriver(createClient(), name, selection),
-      });
-      await use(session);
-      await session.close('worker-exit');
-    },
-    { scope: 'worker', timeout: SESSION_FIXTURE_TIMEOUT_MS },
-  ],
+      { scope: 'worker', timeout: SESSION_FIXTURE_TIMEOUT_MS },
+    ],
 
-  device: [
-    async ({ session, aiModel }, use, testInfo) => {
-      const sink = playwrightSink();
-      await session.beginTest(sink);
+    device: [
+      async ({ session, aiModel }, use, testInfo) => {
+        const sink = playwrightSink();
+        await session.beginTest(sink);
 
-      await use(withAi(createDevice(session, sink), session, sink, aiModel));
+        await use(withAi(createDevice(session, sink), session, sink, aiModel));
 
-      // `expectedStatus` is what makes `test.fail()` an expected outcome that captures nothing.
-      if (evidenceWanted(session.options.evidence, testInfo.status !== testInfo.expectedStatus)) {
-        await captureEvidence(session, sink);
-      }
-    },
-    { auto: true, timeout: DEVICE_FIXTURE_TIMEOUT_MS },
-  ],
-});
+        // `expectedStatus` is what makes `test.fail()` an expected outcome that captures nothing.
+        if (evidenceWanted(session.options.evidence, testInfo.status !== testInfo.expectedStatus)) {
+          await captureEvidence(session, sink);
+        }
+      },
+      { auto: true, timeout: DEVICE_FIXTURE_TIMEOUT_MS },
+    ],
+  });
+}
+
+export const test = createTest(agentDeviceDriver);
 
 /**
  * Playwright hands the merged `expect.timeout` to a matcher as `this.timeout`
- * and exposes it nowhere public. The internal project the worker info wraps
- * carries it, so it is read from there as a raw value for the parser. A
- * Playwright release that moves it leaves `expectTimeout` at Playwright's own
- * default, and the adapter's own suite pins the read.
+ * and exposes it nowhere public. The test info that triggers the worker
+ * fixture carries it on its internal project, so it is read from there as a
+ * raw value for the parser. A Playwright release that moves it leaves
+ * `expectTimeout` at Playwright's own default, and the adapter's own suite
+ * pins the read.
  */
-function projectExpectTimeout(workerInfo: WorkerInfo): unknown {
-  const internal: unknown = Reflect.get(workerInfo, '_projectInternal');
+function projectExpectTimeout(): unknown {
+  let info: object;
+  try {
+    info = base.info();
+  } catch {
+    return undefined;
+  }
+  const internal: unknown = Reflect.get(info, '_projectInternal');
   if (typeof internal !== 'object' || internal === null) return undefined;
   const expect: unknown = Reflect.get(internal, 'expect');
   if (typeof expect !== 'object' || expect === null) return undefined;

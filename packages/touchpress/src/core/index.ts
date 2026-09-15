@@ -39,6 +39,7 @@ export type {
   DeviceFailure,
   DeviceInfo,
   DeviceSelection,
+  DriverFactory,
   OpenRequest,
   ScrollDirection,
   Settled,

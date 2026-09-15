@@ -4,7 +4,7 @@ import type {
   Binding,
   DeviceDriver,
   DeviceFailure,
-  DeviceSelection,
+  DriverFactory,
   ScrollDirection,
   Settled,
 } from './driver.ts';
@@ -116,7 +116,7 @@ export type OpenSessionInput = {
   /** The runner's project name. Part of the session name so two projects never share one. */
   readonly scope: string;
   readonly sink: ActionSink;
-  readonly createDriver: (session: string, selection: DeviceSelection) => DeviceDriver;
+  readonly createDriver: DriverFactory;
 };
 
 /**
