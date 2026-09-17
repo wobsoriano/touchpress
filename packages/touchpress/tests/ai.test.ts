@@ -216,6 +216,7 @@ test('a loop that outlives its budget fails with the instruction and the screen'
     kind: 'ai-timeout',
     command: 'act',
     asked: 'Open the list',
+    instruction: 'Open the list',
     timeoutMs: 20,
   });
   expect((error as TouchpressError).message).toContain('act ran out of its 20ms budget');

@@ -67,6 +67,12 @@ export type JudgedRun = {
  */
 export function parseJudgments(judgments: Judgments): Asked[] {
   if (typeof judgments === 'string') return [parseOne(LONE, null, judgments)];
+  // An array has entries too, and would be asked as judgments named "0" and "1".
+  if (typeof judgments !== 'object' || judgments === null || Array.isArray(judgments)) {
+    throw invalid(
+      `it was given ${JSON.stringify(judgments) ?? typeof judgments}, not a statement or a record of judgments`,
+    );
+  }
   const entries = Object.entries(judgments);
   if (entries.length === 0) throw invalid('it was given no judgments');
   return entries.map(([id, judgment]) => parseOne(id, id, judgment));
@@ -114,11 +120,11 @@ function parseChance(
     label,
     instructions,
     // Built key by key rather than spread, so `min` and `max` never reach the provider.
-    question: {
+    question: jsonOnly({
       type: 'boolean',
       instructions: judgment.instructions,
       ...(judgment.criteria === undefined ? {} : { criteria: judgment.criteria }),
-    } as Experimental_EvaluationQuestion,
+    }),
     expectation: {
       kind: 'chance',
       min: min ?? (max === undefined ? DEFAULT_MIN_CHANCE : null),
@@ -151,13 +157,23 @@ function parseChoice(
     id,
     label,
     instructions,
-    question: {
+    question: jsonOnly({
       type: 'choice',
       instructions: judgment.instructions,
       criteria: judgment.criteria,
-    } as Experimental_EvaluationQuestion,
+    }),
     expectation: { kind: 'choice', is: judgment.is, min: judgment.min ?? null },
   };
+}
+
+/**
+ * The question as JSON carries it. The public types allow an `undefined` inside
+ * structured instructions and criteria, the way the SDK's own do, and the SDK
+ * then rejects one at runtime. A round trip drops them, which is what the author
+ * of `{ context: maybeMissing }` meant.
+ */
+function jsonOnly(question: object): Experimental_EvaluationQuestion {
+  return JSON.parse(JSON.stringify(question)) as Experimental_EvaluationQuestion;
 }
 
 /** A key that belongs to the other kind is a bound the author believes is being checked. */
@@ -206,7 +222,6 @@ export async function pollJudgments(run: JudgedRun): Promise<JudgedOutcome> {
   let usage: JudgedUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   let interrupted: string | null = null;
   for (;;) {
-    const started = Date.now();
     // The capture sits inside the guard too. A screen mid-transition is what the loop exists to
     // absorb, and a snapshot that fails on the way there is part of that transition.
     let poll: Awaited<ReturnType<typeof capturedAndJudged>> | null = null;
@@ -215,7 +230,11 @@ export async function pollJudgments(run: JudgedRun): Promise<JudgedOutcome> {
     } catch (error) {
       // The first poll has nothing to fall back on, so whatever stopped it is the failure.
       if (last === null) throw error;
-      interrupted = error instanceof Error ? (error.message.split('\n')[0] ?? null) : String(error);
+      // A poll the budget cut short is how a failing assertion normally ends, not an interruption.
+      if (!isOutOfBudget(error)) {
+        interrupted =
+          error instanceof Error ? (error.message.split('\n')[0] ?? null) : String(error);
+      }
     }
     if (poll !== null) {
       usage = sum(usage, poll.result.usage);
@@ -235,20 +254,50 @@ export async function pollJudgments(run: JudgedRun): Promise<JudgedOutcome> {
     } else if (last !== null) {
       last = { ...last, usage, interrupted };
     }
-    // Another poll is worth starting only when the wait and a poll as long as this one both fit.
-    // One that cannot finish costs a capture and a model call whose answer is thrown away.
-    const fits = deadline - Date.now() > POLL_INTERVAL_MS + (Date.now() - started);
-    if (!fits && last !== null) return last;
+    // Poll again whenever the wait fits. How long the last poll took says little about the next
+    // one, since a cold start or a slow capture does not repeat, and a poll the budget cuts short
+    // falls back to these verdicts anyway.
+    if (last !== null && deadline - Date.now() <= POLL_INTERVAL_MS) return last;
     await sleep(POLL_INTERVAL_MS);
   }
 }
 
+function isOutOfBudget(error: unknown): boolean {
+  return error instanceof TouchpressError && error.info.kind === 'ai-timeout';
+}
+
+/**
+ * One poll, held to the assertion's deadline from the capture on. The capture is
+ * a device round trip with no budget of its own here, so without the race a slow
+ * one lets the assertion pass after its timeout and a hung one never ends.
+ */
 async function capturedAndJudged(
   run: JudgedRun,
   deadline: number,
 ): Promise<{ readonly screen: Screen; readonly result: SdkResult }> {
-  const screen = await run.screen();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(outOfBudget(run, 'No screen was captured in time.')),
+      Math.max(0, deadline - Date.now()),
+    );
+  });
+  const screen = await Promise.race([run.screen(), expired]).finally(() => clearTimeout(timer));
+  if (Date.now() >= deadline) throw outOfBudget(run, renderScreen(screen));
   return { screen, result: await judgeOnce(run, screen, deadline) };
+}
+
+function outOfBudget(run: JudgedRun, screen: string): TouchpressError {
+  const asked = run.asked.map((one) => one.label ?? one.instructions).join(', ');
+  return new TouchpressError({
+    kind: 'ai-timeout',
+    command: 'toBeJudged',
+    asked,
+    instruction: asked,
+    // The assertion's budget, not what was left of it, so the message never blames a millisecond.
+    timeoutMs: run.timeout,
+    screen,
+  });
 }
 
 function sum(total: JudgedUsage, poll: SdkResult['usage']): JudgedUsage {
@@ -269,8 +318,8 @@ function verdictOf(asked: Asked, answer: SdkAnswer | undefined): Verdict {
       label,
       instructions,
       passed: missed === null,
-      received: `${apartFrom(chance, missed)} chance`,
-      needed: bounds(expectation.min, expectation.max),
+      received: `${percent(chance, digitsApart(chance, missed))} chance`,
+      needed: bounds(expectation.min, expectation.max, digitsApart(chance, missed)),
     };
   }
   if (answer?.type !== 'choice') throw mismatch(asked, answer);
@@ -281,7 +330,7 @@ function verdictOf(asked: Asked, answer: SdkAnswer | undefined): Verdict {
   // than fail on an answer that reads as exactly the one asked for.
   const held =
     chance !== undefined
-      ? `${apartFrom(chance, missed)} chance`
+      ? `${percent(chance, digitsApart(chance, missed))} chance`
       : expectation.min === null
         ? null
         : 'no chance reported';
@@ -293,7 +342,7 @@ function verdictOf(asked: Asked, answer: SdkAnswer | undefined): Verdict {
     needed:
       expectation.min === null
         ? expectation.is
-        : `${expectation.is} at ${percent(expectation.min)} or more`,
+        : `${expectation.is} at ${percent(expectation.min, digitsApart(chance ?? 0, missed))} or more`,
   };
 }
 
@@ -303,27 +352,30 @@ function mismatch(asked: Asked, answer: SdkAnswer | undefined): Error {
   );
 }
 
-function bounds(min: number | null, max: number | null): string {
-  if (min !== null && max !== null) return `between ${percent(min)} and ${percent(max)}`;
-  if (max !== null) return `at most ${percent(max)}`;
-  return `at least ${percent(min ?? DEFAULT_MIN_CHANCE)}`;
+function bounds(min: number | null, max: number | null, digits: number): string {
+  if (min !== null && max !== null) {
+    return `between ${percent(min, digits)} and ${percent(max, digits)}`;
+  }
+  if (max !== null) return `at most ${percent(max, digits)}`;
+  return `at least ${percent(min ?? DEFAULT_MIN_CHANCE, digits)}`;
 }
 
-function percent(value: number, digits = 0): string {
+function percent(value: number, digits: number): string {
   return `${String(Number((value * 100).toFixed(digits)))}%`;
 }
 
 /**
- * The chance, printed with as many decimals as it takes to read differently from
- * the bound it missed. Rounded alike, 0.7963 against 0.8 prints as "80% chance,
- * needed at least 80%", which reads as a pass that failed.
+ * How many decimals it takes for a chance and the bound it missed to print as
+ * different numbers. Both are printed at that precision, because rounding either
+ * one alone turns 0.8 against a minimum of 0.804 into "80% chance, needed at
+ * least 80%", which reads as a pass that failed. Zero when nothing was missed.
  */
-function apartFrom(chance: number, missed: number | null): string {
-  if (missed === null) return percent(chance);
-  for (const digits of [0, 1, 2, 3]) {
-    if (percent(chance, digits) !== percent(missed, digits)) return percent(chance, digits);
+function digitsApart(chance: number, missed: number | null): number {
+  if (missed === null) return 0;
+  for (let digits = 0; digits <= 12; digits += 1) {
+    if (percent(chance, digits) !== percent(missed, digits)) return digits;
   }
-  return percent(chance, 4);
+  return 12;
 }
 
 /** A gateway id already reads as a name, and an instance carries its own. */
@@ -333,24 +385,15 @@ export function modelName(model: AiEvaluationModel): string {
 
 async function judgeOnce(run: JudgedRun, screen: Screen, deadline: number): Promise<SdkResult> {
   const evaluate = await loadEvaluate();
-  // What is left of the assertion's budget, so a model that hangs fails the poll rather than outliving it.
-  const timeout = Math.max(1, deadline - Date.now());
   return evaluate({
     model: evaluationModel(run.model),
     state: screenState(screen, run.platform),
     questions: Object.fromEntries(run.asked.map((asked) => [asked.id, asked.question])),
-    abortSignal: AbortSignal.timeout(timeout),
+    // What is left of the assertion's budget, so a model that hangs fails the poll rather than outliving it.
+    abortSignal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
   }).catch((error: unknown) => {
     if (!timedOut(error)) throw error;
-    throw new TouchpressError({
-      kind: 'ai-timeout',
-      command: 'toBeJudged',
-      asked: run.asked.map((asked) => asked.label ?? asked.instructions).join(', '),
-      // The assertion's budget, not what was left of it. A capture that ate the budget leaves the
-      // model a millisecond, and "ran out of its 1ms budget" blames the wrong thing.
-      timeoutMs: run.timeout,
-      screen: renderScreen(screen),
-    });
+    throw outOfBudget(run, renderScreen(screen));
   });
 }
 

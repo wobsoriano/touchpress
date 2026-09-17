@@ -254,7 +254,7 @@ A looser bound accepts every unsure answer, not only this one.
 
 ### Options and failures
 
-`{ timeout }` is the second argument. It defaults to `expect.timeout` from the Playwright config, the way every other matcher's does. Each poll is a capture plus a model call.
+`{ timeout }` is the second argument. It defaults to `expect.timeout` from the Playwright config, the way every other matcher's does. Each poll is a capture plus a model call, and both count against the budget. A capture that uses all of it fails the assertion as a timeout, and another poll starts whenever the half second wait still fits.
 
 A capture or a model call that fails on a later poll is absorbed, because a screen mid-transition is what the polling is for. If the budget ends that way, the failure prints the last verdicts and the error that interrupted the polls. The first poll has nothing to fall back on, so an error there fails the assertion as it is.
 

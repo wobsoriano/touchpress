@@ -77,7 +77,10 @@ function slow(chance: number, delayMs: number): Experimental_EvaluationMockModel
   );
 }
 
-function fakeSession(screens: readonly (Screen | Error)[]): DeviceSession {
+function fakeSession(
+  screens: readonly (Screen | Error)[],
+  captureMs: number | 'never' = 0,
+): DeviceSession {
   let captures = 0;
   const one: SessionDevice = {
     capture: () => {
@@ -85,7 +88,8 @@ function fakeSession(screens: readonly (Screen | Error)[]): DeviceSession {
       captures += 1;
       if (screen === undefined) throw new Error('the fake session was given no screen');
       if (screen instanceof Error) return Promise.reject(screen);
-      return Promise.resolve(screen);
+      if (captureMs === 'never') return new Promise<Screen>(() => {});
+      return new Promise((resolve) => setTimeout(() => resolve(screen), captureMs));
     },
   } as SessionDevice;
   return {
@@ -99,8 +103,9 @@ function aiDevice(
   evaluationModel: Experimental_EvaluationMockModelV4 | undefined,
   sink = createRecordingSink(),
   screens: readonly (Screen | Error)[] = [loadScreen('ios-login')],
+  captureMs: number | 'never' = 0,
 ): Device & AiDevice {
-  return withAi({} as Device, fakeSession(screens), sink, undefined, evaluationModel);
+  return withAi({} as Device, fakeSession(screens, captureMs), sink, undefined, evaluationModel);
 }
 
 function state(timeout: number, isNot = false): ExpectMatcherState {
@@ -581,4 +586,94 @@ test('the timeout option overrides expect.timeout', async () => {
 
 test('a gateway model id names itself in the report', () => {
   expect(modelName('typesafe-ai/jev-latest')).toBe('typesafe-ai/jev-latest');
+});
+
+/** Answers the first poll after `firstMs` with `first`, and every later poll at once with `rest`. */
+function slowThenFast(
+  first: number,
+  firstMs: number,
+  rest: number,
+): Experimental_EvaluationMockModelV4 {
+  let polls = 0;
+  const answer = (call: Call, chance: number): Result => ({
+    answers: Object.fromEntries(
+      Object.keys(call.questions).map((id) => [
+        id,
+        { type: 'boolean' as const, probability: chance },
+      ]),
+    ),
+    warnings: [],
+  });
+  return model((call: Call): Promise<Result> => {
+    polls += 1;
+    if (polls > 1) return Promise.resolve(answer(call, rest));
+    return new Promise((resolve) => setTimeout(() => resolve(answer(call, first)), firstMs));
+  });
+}
+
+test('a capture that eats the whole budget is a timeout, not a pass that arrived late', async () => {
+  const device = aiDevice(scripted([1]), createRecordingSink(), [loadScreen('ios-login')], 200);
+
+  await expect(judged(device, 'A user is signed in', 20)).rejects.toMatchObject({
+    info: { kind: 'ai-timeout', command: 'toBeJudged', timeoutMs: 20 },
+  });
+});
+
+test('a capture that never returns is cut off at the assertion budget', async () => {
+  const device = aiDevice(scripted([1]), createRecordingSink(), [loadScreen('ios-login')], 'never');
+  const started = Date.now();
+
+  await expect(judged(device, 'A user is signed in', 50)).rejects.toMatchObject({
+    info: { kind: 'ai-timeout', command: 'toBeJudged' },
+  });
+  expect(Date.now() - started, 'it did not wait for the test timeout').toBeLessThan(1000);
+});
+
+test('one slow poll does not give up a budget the next poll could still pass in', async () => {
+  const result = await judged(aiDevice(slowThenFast(0.3, 700, 0.95)), 'A user is signed in', 1500);
+
+  expect(result.pass, 'the second poll fit after the 500ms interval').toBe(true);
+});
+
+test('an undefined inside structured instructions or criteria is dropped before the model sees it', async () => {
+  const calls: Call[] = [];
+  const result = await judged(aiDevice(scripted([1], calls)), {
+    ready: {
+      instructions: { statement: 'The list is ready', context: undefined },
+      criteria: { true: undefined, false: 'A spinner is showing' },
+    },
+  });
+
+  expect(result.pass).toBe(true);
+  expect(calls[0]?.questions).toEqual({
+    ready: {
+      type: 'boolean',
+      instructions: { statement: 'The list is ready' },
+      criteria: { false: 'A spinner is showing' },
+    },
+  });
+});
+
+test('a chance and a fractional bound never print as the same number', async () => {
+  const coarse = await judged(
+    aiDevice(scripted([0.8])),
+    { a: { instructions: 'x is showing', min: 0.804 } },
+    20,
+  );
+  const fine = await judged(aiDevice(scripted([0.79999999])), 'x is showing', 20);
+
+  expect(coarse.pass).toBe(false);
+  expect(coarse.message()).toContain('FAIL  a 80% chance, needed at least 80.4%');
+  expect(fine.pass).toBe(false);
+  expect(fine.message()).toContain('FAIL  79.999999% chance, needed at least 80%');
+});
+
+test('a judgments value that is no string and no record is refused, not crashed on', async () => {
+  const device = aiDevice(scripted([1]));
+  for (const bad of [null, undefined, ['ready'], 42]) {
+    const error = await judged(device, bad as unknown as Judgments).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect((error as TouchpressError).info?.kind, JSON.stringify(bad)).toBe('ai-judgment-invalid');
+  }
 });
