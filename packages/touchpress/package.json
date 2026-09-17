@@ -1,6 +1,6 @@
 {
   "name": "touchpress",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "End-to-end testing for mobile apps.",
   "keywords": [
     "android",
