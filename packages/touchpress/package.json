@@ -47,7 +47,7 @@
     "@playwright/test": "1.63.0",
     "@types/node": "^26.1.1",
     "@types/pngjs": "^6.0.5",
-    "ai": "^7.0.93",
+    "ai": "^7.0.105",
     "bumpp": "^11.1.0",
     "typescript": "^7.0.2",
     "vite": "catalog:",
