@@ -37,6 +37,7 @@ export const setupTest = base.extend<object, TouchpressOptions & AiOptions>({
   sessionPrefix: [TOUCHPRESS_DEFAULTS.sessionPrefix, { option: true, scope: 'worker' }],
   // Unset rather than a plausible default, because there is no model this library could pick.
   aiModel: [undefined, { option: true, scope: 'worker' }],
+  evaluationModel: [undefined, { option: true, scope: 'worker' }],
 });
 
 /** The worker session already opened the app with a relaunch, so the first test skips one. */
@@ -104,14 +105,14 @@ export const test = setupTest.extend<{ device: Device & AiDevice }, { session: D
   ],
 
   device: [
-    async ({ session, aiModel }, use, testInfo) => {
+    async ({ session, aiModel, evaluationModel }, use, testInfo) => {
       const sink = playwrightSink();
       if (session.options.relaunch === 'per-test' && startedTests.has(session)) {
         await session.relaunch(sink);
       }
       startedTests.add(session);
 
-      await use(withAi(createDevice(session, sink), session, sink, aiModel));
+      await use(withAi(createDevice(session, sink), session, sink, aiModel, evaluationModel));
 
       if (shouldCapture(testInfo, session.options.evidence)) await captureEvidence(session, sink);
     },

@@ -1,6 +1,6 @@
 # Assertions
 
-Eight matchers, all on touchpress's own `expect`, all retrying, all accepting `{ timeout }`, all working under `.not`.
+Nine matchers, all on touchpress's own `expect`, all retrying, all accepting `{ timeout }`. All but `toBeJudged` work under `.not`. That one refuses it and takes a `max` bound instead, for the reason [AI](ai.md) gives.
 
 | matcher                           | asserts                                    |
 | --------------------------------- | ------------------------------------------ |
@@ -12,8 +12,9 @@ Eight matchers, all on touchpress's own `expect`, all retrying, all accepting `{
 | `toBeFocused()`                   | that node is focused                       |
 | `toHaveCount(n)`                  | the locator resolves to `n` distinct nodes |
 | `toHaveScreenshot(name, options)` | the pixels match a committed baseline      |
+| `toBeJudged(judgments, options)`  | a model gives every judgment its chance    |
 
-They carry Playwright's own matcher names, but they are typed by their first parameter, so they surface on a touchpress locator and on nothing else. Web locators are never mixed into the same `expect` here. `toHaveScreenshot` also takes the `device` itself, for a whole-screen comparison.
+They carry Playwright's own matcher names, but they are typed by their first parameter, so they surface on a touchpress locator and on nothing else. Web locators are never mixed into the same `expect` here. `toHaveScreenshot` also takes the `device` itself, for a whole-screen comparison, and `toBeJudged` takes only the device. It needs a model, and it is documented in [AI](ai.md).
 
 ```ts
 import { expect, test } from 'touchpress';

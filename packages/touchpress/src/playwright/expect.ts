@@ -1,7 +1,9 @@
 import { expect as base, type ExpectMatcherState } from '@playwright/test';
+import type { Judgments } from '../ai/device.ts';
 import type { Device, Locator } from '../core/device.ts';
 import type { Check, CheckName } from '../core/checks.ts';
 import { textMatch } from '../core/query.ts';
+import { assertJudged, type JudgedOptions } from './judged.ts';
 import { assertScreenshot, type ScreenshotOptions } from './screenshot.ts';
 
 export type MatcherOptions = { timeout?: number };
@@ -107,5 +109,15 @@ export const expect = base.extend({
     options?: ScreenshotOptions,
   ) {
     return assertScreenshot(this, target, nameOrOptions, options);
+  },
+
+  // The one matcher a model decides. It polls a probability rather than a predicate, so it takes a threshold.
+  toBeJudged(
+    this: ExpectMatcherState,
+    device: Device,
+    judgments: Judgments,
+    options?: JudgedOptions,
+  ) {
+    return assertJudged(this, device, judgments, options);
   },
 });

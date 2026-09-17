@@ -5,6 +5,11 @@ packages:
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0
   vite-plus: 0.3.0
+minimumReleaseAgeExclude:
+  - '@ai-sdk/gateway@4.0.85'
+  - '@ai-sdk/provider-utils@5.0.43'
+  - '@ai-sdk/provider@4.0.17'
+  - ai@7.0.105
 overrides:
   vite@*: 'catalog:'
 peerDependencyRules:

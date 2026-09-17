@@ -212,7 +212,13 @@ test('a loop that outlives its budget fails with the instruction and the screen'
 
   const error = await run.catch((thrown: unknown) => thrown);
   expect(error).toBeInstanceOf(TouchpressError);
-  expect((error as TouchpressError).info).toMatchObject({ kind: 'ai-timeout', timeoutMs: 20 });
+  expect((error as TouchpressError).info).toMatchObject({
+    kind: 'ai-timeout',
+    command: 'act',
+    asked: 'Open the list',
+    timeoutMs: 20,
+  });
+  expect((error as TouchpressError).message).toContain('act ran out of its 20ms budget');
   expect((error as TouchpressError).message).toContain('@a1 [button] "List"');
 });
 
@@ -369,7 +375,7 @@ test('extract tells the model it is reading a tree rather than dropping its inst
 
 test('act and extract name the aiModel key when no model is configured', async () => {
   const session = { name: 'touchpress-ai-0', options: { platform: 'ios' } } as DeviceSession;
-  const device = withAi({} as Device, session, silentSink, undefined);
+  const device = withAi({} as Device, session, silentSink, undefined, undefined);
 
   await expect(device.act('sign in')).rejects.toThrow(/use\.aiModel/);
   await expect(device.extract('signed in?', z.object({ ok: z.boolean() }))).rejects.toThrow(
