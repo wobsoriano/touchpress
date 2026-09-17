@@ -70,7 +70,12 @@ export type ErrorInfo =
   | { readonly kind: 'type-rejected' }
   | { readonly kind: 'driver'; readonly command: string; readonly failure: DeviceFailure }
   | { readonly kind: 'ai-not-configured' }
+  | { readonly kind: 'ai-judge-not-configured' }
   | { readonly kind: 'ai-missing-peer' }
+  /** The installed `ai` predates `experimental_evaluate`, which the peer range still allows. */
+  | { readonly kind: 'ai-judge-unsupported' }
+  /** A judgment `toBeJudged` was handed that no model could be asked, caught before one is. */
+  | { readonly kind: 'ai-judgment-invalid'; readonly reason: string }
   | {
       readonly kind: 'ai-blocked';
       readonly instruction: string;
@@ -86,7 +91,10 @@ export type ErrorInfo =
     }
   | {
       readonly kind: 'ai-timeout';
-      readonly instruction: string;
+      /** Which call ran out. Both spend a budget of their own on a model that never answered. */
+      readonly command: 'act' | 'toBeJudged';
+      /** What the call was asked. An instruction for `act`, the judgments for `toBeJudged`. */
+      readonly asked: string;
       readonly timeoutMs: number;
       readonly screen: string;
     };
@@ -186,10 +194,23 @@ function formatError(info: ErrorInfo): string {
         'device.act and device.extract need a model.',
         "Set use.aiModel to a gateway model id, such as 'anthropic/claude-sonnet-5', or to a provider model instance.",
       ].join('\n');
+    case 'ai-judge-not-configured':
+      return [
+        'expect(device).toBeJudged needs an evaluation model.',
+        "Set use.evaluationModel to a provider instance, such as typeSafeAi.evaluationModel('jev-latest'),",
+        "or to a gateway model id, such as 'typesafe-ai/jev-latest'.",
+        'An evaluation model is its own kind, so the model in use.aiModel does not stand in for it.',
+      ].join('\n');
     case 'ai-missing-peer':
       return [
-        "device.act and device.extract need the optional peer dependency 'ai'.",
+        "device.act, device.extract, and expect(device).toBeJudged need the optional peer dependency 'ai'.",
         'Install it with: pnpm add -D ai',
+      ].join('\n');
+    case 'ai-judge-unsupported':
+      return [
+        "expect(device).toBeJudged needs experimental_evaluate, which the installed 'ai' package does not export.",
+        'It needs ai 7.0.103 or newer, and 7.0.105 for a gateway model id.',
+        'Upgrade it with: pnpm add -D ai@latest',
       ].join('\n');
     case 'ai-blocked':
       return [
@@ -211,13 +232,15 @@ function formatError(info: ErrorInfo): string {
         `Screen:`,
         info.screen,
       ].join('\n');
+    case 'ai-judgment-invalid':
+      return `toBeJudged cannot run, because ${info.reason}.`;
     case 'ai-timeout':
       return [
-        `act ran out of its ${String(info.timeoutMs)}ms budget before reaching an outcome.`,
+        `${info.command} ran out of its ${String(info.timeoutMs)}ms budget before the model answered.`,
         ``,
-        `Instruction: ${info.instruction}`,
+        `${info.command === 'act' ? 'Instruction' : 'Judgments'}: ${info.asked}`,
         ``,
-        'Raise the act timeout, and the test timeout with it.',
+        `Raise the ${info.command} timeout, and the test timeout with it.`,
         ``,
         `Screen:`,
         info.screen,

@@ -13,10 +13,27 @@ export type AiModel =
     };
 
 /**
- * The one key `act` and `extract` add to Playwright's `use`. It is not part of
+ * What `use.evaluationModel` accepts, spelled structurally for the same reason
+ * `AiModel` is. An evaluation model is its own provider spec rather than a
+ * language model, so `aiModel` cannot stand in for it, and a gateway model id
+ * such as `'typesafe-ai/jev-latest'` fits here the way one fits there.
+ */
+export type AiEvaluationModel =
+  | string
+  | {
+      readonly specificationVersion: string;
+      readonly provider: string;
+      readonly modelId: string;
+    };
+
+/**
+ * The keys `act`, `extract`, and `toBeJudged` add to Playwright's `use`. They are not part of
  * `core/config.ts`, because nothing under `core/` may name an AI SDK type.
  *
- * Unset is the default, and it fails at the first `act` rather than at worker
- * start, so a project that never calls one needs no model.
+ * Unset is the default for both, and each fails at the first call that needs it
+ * rather than at worker start, so a project that never calls one needs no model.
  */
-export type AiOptions = { aiModel: AiModel | undefined };
+export type AiOptions = {
+  aiModel: AiModel | undefined;
+  evaluationModel: AiEvaluationModel | undefined;
+};

@@ -115,7 +115,8 @@ export function runAct(run: ActRun): Promise<string> {
           if (!timedOut(error)) throw error;
           throw new TouchpressError({
             kind: 'ai-timeout',
-            instruction: run.instruction,
+            command: 'act',
+            asked: run.instruction,
             timeoutMs: run.timeout,
             screen: await run.screen(),
           });
@@ -260,7 +261,7 @@ function outcomeOf(
 }
 
 /** `AbortSignal.timeout` rejects with a DOMException named TimeoutError, which a provider surfaces as is or as an AbortError. */
-function timedOut(error: unknown): boolean {
+export function timedOut(error: unknown): boolean {
   return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
 }
 
