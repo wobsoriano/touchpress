@@ -1,6 +1,6 @@
 # AI
 
-Two methods on the `device` fixture and one matcher take a model. `act` drives the app from an instruction in English. `extract` asks one question about the screen and returns a typed answer. `toBeJudged` asserts what an evaluation model judges the screen to be, with the chance behind each judgment.
+Two methods on the `device` fixture take a model. `act` drives the app from an instruction in English. `extract` asks one question about the screen and returns a typed answer. `act` runs on either of two kinds of model, a language model that calls tools, or an evaluation model such as TypeSafe's Jev that picks each move from the ones the screen offers.
 
 ```ts
 import { expect, test } from 'touchpress';
@@ -14,12 +14,10 @@ test('sign in', async ({ device }) => {
     'Is a user signed in?',
     z.object({ signedIn: z.boolean(), reason: z.string() }),
   );
-
-  await expect(device).toBeJudged('A user is signed in');
 });
 ```
 
-All three are opt-in. A project that never calls one needs no model and no extra dependency.
+Both are opt-in. A project that never calls one needs no model and no extra dependency.
 
 ## Install
 
@@ -29,7 +27,7 @@ All three are opt-in. A project that never calls one needs no model and no extra
 pnpm add -D ai
 ```
 
-Version 6 or 7. Both carry every name touchpress uses.
+Version 6 or 7 for `aiModel`. `evaluationModel` needs 7.0.103 or newer, where `experimental_evaluate` arrived.
 
 ## The `aiModel` key
 
@@ -62,7 +60,13 @@ Leave it unset and `act` and `extract` fail naming the key. Nothing else reads i
 
 ## The `evaluationModel` key
 
-`toBeJudged` reads `evaluationModel`, not `aiModel`. An evaluation model is a different kind of model from a language model, so the two keys are separate and a project can set one, the other, or both.
+`evaluationModel` is a decision model. When it is set, `act` runs on it instead of on `aiModel`. An evaluation model answers typed questions about a block of state, and never writes text or calls a tool, so it is its own kind of model and the two keys are separate. A project can set one, the other, or both. With both, `act` runs on the evaluation model and `extract` on the language model.
+
+To run one file or one test on the language model while the config sets an evaluation model, pass `null`. Playwright reads `undefined` in `test.use` as "not set" and keeps the config's value, so `null` is the form that turns it off.
+
+```ts
+test.use({ evaluationModel: null });
+```
 
 ```ts
 use: {
@@ -98,9 +102,7 @@ if (existsSync(envFile)) process.loadEnvFile(envFile);
 const summary = await device.act('Open the list and mark the second item done');
 ```
 
-`act` runs a tool loop. The model takes a snapshot, decides what to do, and runs one command against the same daemon session the deterministic steps use, so it acts on the app this test already launched. It stops when the model reports the instruction is satisfied, and it resolves with the model's one-line summary of what it did.
-
-It fails when the model reports it cannot proceed, when it runs out of steps, and when it runs out of time without reaching an outcome. Each error prints the instruction and the screen the run ended on.
+`act` drives the app until the instruction is satisfied, then resolves with a one-line summary. It fails when the model reports it cannot proceed, when it runs out of steps, and when it runs out of time without reaching an outcome. Each error prints the instruction and the screen the run ended on.
 
 ```
 act stopped without finishing: The list screen has no second item
@@ -111,13 +113,39 @@ Screen:
   @e1 [button] "List"
 ```
 
-`{ timeout }` is the whole budget for the loop and defaults to 120000 milliseconds. `{ maxSteps }` caps how many turns the model gets and defaults to 25.
+`{ timeout }` is the budget for the loop and defaults to 120000 milliseconds. It is checked before each model call and bounds the call itself, so one capture or one device action can run past it. `{ maxSteps }` caps how many turns the model gets and defaults to 25.
 
 ```ts
 await device.act('Work through the onboarding', { timeout: 300_000, maxSteps: 60 });
 ```
 
-## The tools the model gets
+### On a language model
+
+With `aiModel` set and `evaluationModel` unset, `act` runs a tool loop. The model takes a snapshot, decides what to do, and runs one command against the same daemon session the deterministic steps use, so it acts on the app this test already launched. It stops when the model reports the instruction is satisfied. It composes any text it types, so an instruction can leave the exact words to it.
+
+### On an evaluation model
+
+With `evaluationModel` set, `act` runs a decision loop. Each step captures the screen, lists every move the screen offers, and asks the model one choice question. The moves are a tap for each enabled control, a fill for each field with each text the instruction quoted, scrolling, going back, waiting, and three verdicts, pass, fail, and incomplete. The model picks one, touchpress performs it through the same driver a deterministic step uses, and the loop repeats on a fresh capture. It ends when the model picks a verdict.
+
+```ts
+test.use({ evaluationModel: typeSafeAi.evaluationModel('jev-latest') });
+
+await device.act(
+  'Sign in with "rob@example.com" and "hunter2". Verify the home screen shows the account\'s email.',
+);
+```
+
+Three things follow from how these models work.
+
+- A verdict ends the run, so a task that says "verify" is judged as well as carried out. `pass` resolves the promise with the model's chance behind it. `fail` and `incomplete` throw the way a blocked run throws, with the chance in the message.
+- The model never writes text. It types only what the instruction put in double quotes, so put every exact value there. When the task needs text it was not given, the run stops and says so.
+- Each step is one capture and one call of a few hundred milliseconds. A sign-in that took a language model three `act` calls and about 45 seconds took Jev seven moves and 21 seconds, for under half a cent.
+
+The model reads the screen as a list of nodes with role, name, test id, hittability, and bounds. It never reads a field's value. A choice question holds 255 options, so on a screen with more controls than that the moves past the limit are left out and the state says how many. A pass the model puts below an 80% chance is looked at again rather than trusted, and a run that ends on such a pass fails saying so. The same move on the same screen three times ends the run, except a wait, which may repeat until the budget ends.
+
+This loop rides `experimental_evaluate`, an AI SDK API still marked experimental, so it can change in a patch release of `ai`. It arrived in ai 7.0.103, and a gateway model id needs 7.0.105. An older `ai` fails naming the version, the way a missing one fails naming the install.
+
+## The tools a language model gets
 
 Ten commands, all of them agent-device's own, with their upstream descriptions.
 
@@ -171,119 +199,9 @@ The rendered screen carries each node's ref, role, name, and test id. It never c
 
 Any schema the AI SDK accepts works, so Zod, Valibot, and a plain JSON schema are all fine.
 
-## `toBeJudged`
-
-```ts
-await expect(device).toBeJudged('A user is signed in');
-```
-
-`toBeJudged` puts a judgment about the screen to an evaluation model and passes when the model gives it a high enough chance. It polls, taking a fresh capture each time, and fails when the budget runs out first. A bare statement passes at an 80% chance.
-
-A plain statement is enough for most assertions. Across 28 statements of this kind on 8 captured iOS and Android screens, Jev put 27 inside the default bounds and got none wrong.
-
-The model receives the screen as a nested tree of roles, names, and test ids, which these models read more decisively than the indented listing a failure message prints. Like the listing, the tree never carries a field's value.
-
-### Named judgments
-
-Pass a record to ask several judgments at once. The model answers them together from one capture, so five cost the latency of one, and each name shows up in the report and in a failure.
-
-```ts
-await expect(device).toBeJudged({
-  signedIn: 'A user is signed in',
-  showingError: { instructions: 'An error message is visible', max: 0.1 },
-  screen: {
-    type: 'choice',
-    instructions: 'Which screen is this?',
-    criteria: {
-      home: 'Shows the Welcome title',
-      'sign-in': 'Asks for an email address or a social provider',
-      password: 'Asks for a password',
-    },
-    is: 'home',
-  },
-});
-```
-
-Each value is one of three things.
-
-- A string is a statement that must reach an 80% chance.
-- A yes or no judgment is the AI SDK's boolean question plus two bounds. `min` is the lowest chance that passes and `max` is the highest. `criteria` says what true and false look like on this screen.
-- A choice judgment is the AI SDK's choice question plus `is`, the option the model must pick. `min` there is the lowest chance the picked option must carry, when the provider reports one.
-
-The assertion passes when every judgment passes on the same capture. `is` is checked against `criteria` before any model is asked, so a typo fails at once rather than after the whole budget.
-
-### Saying something must be false
-
-Use `max`. A statement the screen must not match is a judgment with a low ceiling.
-
-```ts
-await expect(device).toBeJudged({
-  showingError: { instructions: 'An error message is visible', max: 0.1 },
-});
-```
-
-`not.toBeJudged` is refused. A negated record has two readings, all of it false or any of it false, and a negated chance would pass on a model that is merely unsure. A chance of 50% passes neither `min: 0.8` nor `max: 0.2`, which is what you want from an assertion a model decides. A judgment it is unsure about is not a pass.
-
-Write what would be true and bound it, rather than writing the negative into the statement. These models read a double negative poorly.
-
-### When an answer hovers
-
-Add `criteria` before you loosen a bound. On a signed-in home screen, "The screen offers a way to sign in" sits at a 37% chance, which passes neither bound. With criteria it falls to 15%, and it stays at 99% on the signed-out screen.
-
-```ts
-await expect(device).toBeJudged({
-  offersSignIn: {
-    instructions: 'The screen offers a way to sign in',
-    criteria: {
-      true: 'A button or link that starts signing in is showing',
-      false: 'An account button or an account email address is showing',
-    },
-    max: 0.2,
-  },
-});
-```
-
-A looser bound accepts every unsure answer, not only this one.
-
-### Writing a judgment
-
-- Ask one judgment per entry. A statement that joins two claims hides two judgments behind one chance. "Is this the signed-out home / welcome screen?" scored 82% on a login form, because a login form is signed out too.
-- Do not ask for a count, arithmetic, or a date comparison. Count with `toHaveCount`, and compute in the test.
-- Keep judgments a person can review. They are plain objects, so a file of them works, typed with `satisfies Judgments` so a choice keeps its `type`.
-- Assert deterministically where a locator can do the job. A locator is exact and free. A judgment is for what a locator cannot say.
-
-### Options and failures
-
-`{ timeout }` is the second argument. It defaults to `expect.timeout` from the Playwright config, the way every other matcher's does. Each poll is a capture plus a model call.
-
-A capture or a model call that fails on a later poll is absorbed, because a screen mid-transition is what the polling is for. If the budget ends that way, the failure prints the last verdicts and the error that interrupted the polls. The first poll has nothing to fall back on, so an error there fails the assertion as it is.
-
-A judgment is checked before any model is asked. A missing instruction, a `type` other than `boolean` or `choice`, a bound outside 0 to 1, a key the judgment's kind does not take, and an `is` that is not one of the criteria all fail at once, naming the judgment.
-
-A failure names the model, marks each judgment, prints what a failed one asked, and ends on the screen it last judged.
-
-```
-Error: Expected toBeJudged but jev-latest never agreed.
-
-FAIL  signedIn 41% chance, needed at least 80%
-      asked: A user is signed in
-pass  showingError 3% chance, needed at most 10%
-
-Timeout: 5000ms (6 polls)
-
-Screen:
-  @e1 [button] "Sign in"
-```
-
-### `toBeJudged` or `extract`
-
-Use `toBeJudged` for a decision. A yes or no, or one of a fixed set, where a fast model built for the job answers in a fraction of a second and says how sure it is.
-
-Use `extract` for a value. A label, a count, anything free-form, where the answer is whatever the screen holds rather than one of the options you wrote down.
-
 ## What the report shows
 
-`act` is one step, and every command the model ran is a step nested under it. A `fill` or a `type` puts the text in a nested step of its own, the way a deterministic fill does.
+`act` is one step, and every command the model ran is a step nested under it. A `fill` or a `type` puts the text in a nested step of its own, the way a deterministic fill does. On an evaluation model the nested steps are the moves, and the last line is the verdict with the model's chance behind it.
 
 ```
 act "Sign in with the email rob@example.com"
@@ -293,17 +211,16 @@ act "Sign in with the email rob@example.com"
     type "rob@example.com"
   snapshot
   press @e9
+act "Sign in with "rob@example.com" and "hunter2". Verify the home screen shows the account's email."
+  tap Sign in
+  fill Email
+    type "rob@example.com"
+  tap Continue
+  jev-latest: passed (95% chance)
 extract "Is a user signed in?"
-toBeJudged signedIn, showingError
-  jev-latest: signedIn 96% chance, needed at least 80%
-  jev-latest: showingError 2% chance, needed at most 10%
 ```
 
-A `toBeJudged` is one step whatever its poll count, with one line per judgment under it naming the model that judged and the chance it ended on. So the report says who decided without anyone opening an attachment.
-
-Each `act` also attaches `ai-act-1.json` to the test. It holds every tool call with its input, each result truncated to 2 KB, each errored call with its error message, the model's text, and the token usage for the run. Read it when a loop did something surprising.
-
-Each `toBeJudged` attaches `ai-judged-1.json`, which holds the judgments as you wrote them, the last answers, each verdict, the poll count, the token usage summed over every poll, and the provider metadata. That last one is where a provider puts what it knows beyond the answer, such as TypeSafe's per-question confidence.
+Each `act` also attaches `ai-act-1.json` to the test. On a language model it holds every tool call with its input, each result truncated to 2 KB, each errored call with its error message, the model's text, and the token usage for the run. On an evaluation model it holds each move the model picked with its chance and latency, the outcome, and the token usage. Read it when a loop did something surprising.
 
 ## Test timeouts
 

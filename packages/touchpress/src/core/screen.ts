@@ -39,6 +39,8 @@ export type ScreenNode = {
   readonly enabled: boolean;
   readonly selected: boolean;
   readonly focused: boolean;
+  /** Null when the driver does not say, which is every Android snapshot today. */
+  readonly hittable: boolean | null;
   /**
    * The driver's hints that a scroll container holds content out of the window.
    * The only thing that says which way to scroll on a platform whose raw tree
@@ -95,6 +97,8 @@ export type RawSnapshot = {
     readonly enabled?: boolean;
     readonly selected?: boolean;
     readonly focused?: boolean;
+    /** Whether a tap would land on the node. Emitted on iOS, absent on Android. */
+    readonly hittable?: boolean;
     readonly hintShowing?: boolean;
     readonly hiddenContentAbove?: boolean;
     readonly hiddenContentBelow?: boolean;
@@ -198,6 +202,7 @@ export function parseScreen(raw: RawSnapshot, platform: Platform): Screen {
       enabled: source.enabled ?? true,
       selected: source.selected ?? false,
       focused: source.focused ?? false,
+      hittable: source.hittable ?? null,
       hiddenContentAbove: source.hiddenContentAbove ?? false,
       hiddenContentBelow: source.hiddenContentBelow ?? false,
     };
@@ -355,7 +360,7 @@ function absorbAncestors(matched: readonly ScreenNode[], query: Query): readonly
 }
 
 /** `tab-bar` is left out because it is a container of buttons rather than a control that takes the touch. */
-const INTERACTIVE_ROLES: ReadonlySet<Role> = new Set<Role>([
+export const INTERACTIVE_ROLES: ReadonlySet<Role> = new Set<Role>([
   'button',
   'link',
   'switch',
