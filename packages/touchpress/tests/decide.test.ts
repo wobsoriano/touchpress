@@ -299,9 +299,9 @@ test('a screen with more controls than a choice holds keeps the first 245 and te
   await aiDevice(scripted([verdict('pass')], calls), [crowded]).act('Look');
 
   expect(offered).toHaveLength(255);
-  expect(dropped).toBe(15);
+  expect(dropped, 'no field, so need_input is not offered and one more control fits').toBe(14);
   const first = calls[0]?.state as { screen: { controlsWithoutMoves: number } } | undefined;
-  expect(first?.screen.controlsWithoutMoves).toBe(15);
+  expect(first?.screen.controlsWithoutMoves).toBe(14);
 });
 
 test('a control the capture marks not hittable is still offered, and a tab bar never is', () => {
@@ -583,4 +583,23 @@ test('a covered field still fails the fill, since the field is the target rather
   await expect(device.act('Type "rob@example.com"')).rejects.toMatchObject({
     info: { kind: 'driver', failure: { kind: 'covered' } },
   });
+});
+
+test('need_input is offered only on a screen with a field to type into', () => {
+  const withField = offeredMoves(login, {}).offered.map((one) => one.id);
+  const withoutField = offeredMoves(home, {}).offered.map((one) => one.id);
+
+  expect(withField).toContain('need_input');
+  expect(withoutField, 'the home screen has buttons and no field').not.toContain('need_input');
+  expect(withoutField.slice(0, 9)).toEqual([
+    'pass',
+    'fail',
+    'incomplete',
+    'wait',
+    'back',
+    'scroll_up',
+    'scroll_down',
+    'scroll_left',
+    'scroll_right',
+  ]);
 });
