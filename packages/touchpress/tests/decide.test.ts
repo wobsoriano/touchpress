@@ -166,6 +166,15 @@ test('the model reads roles, names, test ids, hittability, and rects, and never 
     hittable: true,
     rect: expect.any(Object) as unknown,
   });
+  const focusedEmail = parseScreen(
+    {
+      nodes: [
+        { ref: 'e1', index: 0, type: 'TextField', label: 'Email', enabled: true, focused: true },
+      ],
+    },
+    'ios',
+  );
+  expect(screenState(focusedEmail).nodes[0]).toMatchObject({ focused: true });
   expect(JSON.stringify(state)).not.toContain('"value"');
 });
 
@@ -515,5 +524,63 @@ test('null in test.use turns the evaluation model off for that file and act runs
 
   await expect(device.act('Sign in')).rejects.toMatchObject({
     info: { kind: 'ai-not-configured' },
+  });
+});
+
+test('a fill whose ref went stale is skipped the way a stale tap is', async () => {
+  const performed: Performed[] = [];
+  const session = fakeSession([login], performed);
+  const one = await session.run((device) => Promise.resolve(device));
+  let attempts = 0;
+  one.fill = () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return Promise.reject(
+        new TouchpressError({
+          kind: 'driver',
+          command: 'fill',
+          failure: { kind: 'stale-ref', detail: 'gone' },
+        }),
+      );
+    }
+    return Promise.resolve({ settled: true, waitedMs: 0 });
+  };
+  const device = withAi(
+    {} as Device,
+    session,
+    createRecordingSink(),
+    undefined,
+    scripted([
+      fills('email', 'rob@example.com'),
+      fills('email', 'rob@example.com'),
+      verdict('pass'),
+    ]),
+  );
+
+  await expect(device.act('Type "rob@example.com" twice')).resolves.toContain('satisfied');
+  expect(attempts).toBe(2);
+});
+
+test('a covered field still fails the fill, since the field is the target rather than a label for one', async () => {
+  const session = fakeSession([login]);
+  const one = await session.run((device) => Promise.resolve(device));
+  one.fill = () =>
+    Promise.reject(
+      new TouchpressError({
+        kind: 'driver',
+        command: 'fill',
+        failure: { kind: 'covered', detail: 'by a sheet' },
+      }),
+    );
+  const device = withAi(
+    {} as Device,
+    session,
+    createRecordingSink(),
+    undefined,
+    scripted([fills('email', 'rob@example.com')]),
+  );
+
+  await expect(device.act('Type "rob@example.com"')).rejects.toMatchObject({
+    info: { kind: 'driver', failure: { kind: 'covered' } },
   });
 });

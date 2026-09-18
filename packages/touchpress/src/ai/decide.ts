@@ -203,6 +203,7 @@ type StateNode = {
   readonly testId?: string;
   readonly enabled?: false;
   readonly selected?: true;
+  readonly focused?: true;
   readonly hittable?: boolean;
   readonly rect?: ScreenNode['rect'];
   readonly moreAbove?: true;
@@ -234,6 +235,8 @@ export function screenState(screen: Screen, dropped = 0): ScreenState {
       ...(node.testId === null ? {} : { testId: node.testId }),
       ...(node.enabled ? {} : { enabled: false as const }),
       ...(node.selected ? { selected: true as const } : {}),
+      // A focus move is offered, so the model must be able to see that it landed.
+      ...(node.focused ? { focused: true as const } : {}),
       ...(node.hittable === null ? {} : { hittable: node.hittable }),
       ...(node.rect === null ? {} : { rect: node.rect }),
       ...(node.hiddenContentAbove ? { moreAbove: true as const } : {}),
@@ -470,8 +473,8 @@ function outOfTime(run: DecideRun, screen: Screen): TouchpressError {
 /**
  * One move on the device, reported the way the language-model loop reports its
  * tool calls. A tap that lands on a label covering its control is retried on
- * the control, the way a deterministic tap is. A ref that went stale is left
- * alone, because the loop captures again before its next move anyway.
+ * the control, the way a deterministic tap is. A tap or fill whose ref went
+ * stale is left alone, because the loop captures again before its next move.
  */
 async function perform(
   run: DecideRun,
@@ -511,7 +514,12 @@ async function perform(
             () => Promise.resolve(),
             { box: true },
           );
-          await run.device.fill(pin(screen, move.node), move.text, budget);
+          try {
+            await run.device.fill(pin(screen, move.node), move.text, budget);
+          } catch (error) {
+            // A covered field is the target itself, so only a stale ref is left to the next capture.
+            if (failureOf(error)?.kind !== 'stale-ref') throw error;
+          }
         },
       );
       return;
