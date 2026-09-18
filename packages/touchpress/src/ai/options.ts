@@ -32,8 +32,8 @@ export type AiEvaluationModel =
  * `core/config.ts`, because nothing under `core/` may name an AI SDK type.
  *
  * `aiModel` is a language model. It drives `act` and answers `extract`.
- * `evaluationModel` is a decision model. When set, it drives `act` instead,
- * picking each move from the ones the screen offers. Both are unset by default,
+ * `evaluationModel` is a decision model. When set, it drives `act` instead.
+ * Both drive the same loop, picking each move from the ones the screen offers. Both are unset by default,
  * and each fails at the first call that needs it rather than at worker start,
  * so a project that never calls one needs no model.
  */

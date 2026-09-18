@@ -1,6 +1,6 @@
 # AI
 
-Two methods on the `device` fixture take a model. `act` drives the app from an instruction in English. `extract` asks one question about the screen and returns a typed answer. `act` runs on either of two kinds of model, a language model that calls tools, or an evaluation model such as TypeSafe's Jev that picks each move from the ones the screen offers.
+Two methods on the `device` fixture take a model. `act` drives the app from an instruction in English. `extract` asks one question about the screen and returns a typed answer. `act` runs on either kind of model, a language model or an evaluation model such as TypeSafe's Jev, and both drive the same way, by picking each move from the ones the screen offers.
 
 ```ts
 import { expect, test } from 'touchpress';
@@ -119,13 +119,9 @@ Screen:
 await device.act('Work through the onboarding', { timeout: 300_000, maxSteps: 60 });
 ```
 
-### On a language model
+### How it drives
 
-With `aiModel` set and `evaluationModel` unset, `act` runs a tool loop. The model takes a snapshot, decides what to do, and runs one command against the same daemon session the deterministic steps use, so it acts on the app this test already launched. It stops when the model reports the instruction is satisfied. It composes any text it types, so an instruction can leave the exact words to it.
-
-### On an evaluation model
-
-With `evaluationModel` set, `act` runs a decision loop. Each step captures the screen, lists every move the screen offers, and asks the model one choice question. The moves are a tap for each enabled control, a fill for each field with each text the instruction quoted, scrolling, going back, waiting, and three verdicts, pass, fail, and incomplete. The model picks one, touchpress performs it through the same driver a deterministic step uses, and the loop repeats on a fresh capture. It ends when the model picks a verdict.
+`act` runs a decision loop. Each step captures the screen, lists every move the screen offers, and asks the model one question, which move next. The moves are a tap for each enabled control, a fill for each field with each text the instruction quoted, scrolling, going back, waiting, and three verdicts, pass, fail, and incomplete. The model picks one, touchpress performs it through the same driver a deterministic step uses, and the loop repeats on a fresh capture. It ends when the model picks a verdict.
 
 ```ts
 test.use({ evaluationModel: typeSafeAi.evaluationModel('jev-latest') });
@@ -135,40 +131,27 @@ await device.act(
 );
 ```
 
-Three things follow from how these models work.
+Three things follow from the loop.
 
-- A verdict ends the run, so a task that says "verify" is judged as well as carried out. `pass` resolves the promise with the model's chance behind it. `fail` and `incomplete` throw the way a blocked run throws, with the chance in the message.
-- The model never writes text. It types only what the instruction put in double quotes, so put every exact value there. When the task needs text it was not given, the run stops and says so.
-- Each step is one capture and one call of a few hundred milliseconds. A sign-in that took a language model three `act` calls and about 45 seconds took Jev seven moves and 21 seconds, for under half a cent.
+- A verdict ends the run, so a task that says "verify" is judged as well as carried out. `pass` resolves the promise with the model's chance behind it when the model reports one. `fail` and `incomplete` throw the way a blocked run throws.
+- Each step is one capture and one model call. On a sign-in flow Jev took six moves and 29 seconds, with calls of 120 to 450 milliseconds. Claude Haiku 4.5 on the same loop took the same six moves and 45 seconds, with calls of one to three seconds and 61k input tokens, where the tool loop it ran before took 13 to 22 calls and 116k to 215k tokens.
+- The model reads the screen as a list of nodes with role, name, test id, focus, hittability, and bounds. It never reads a field's value.
 
-The model reads the screen as a list of nodes with role, name, test id, hittability, and bounds. It never reads a field's value. A choice question holds 255 options, so on a screen with more controls than that the moves past the limit are left out and the state says how many. A pass the model puts below an 80% chance is looked at again rather than trusted, and a run that ends on such a pass fails saying so. The same move on the same screen three times ends the run, except a wait, which may repeat until the budget ends.
+### On an evaluation model
 
-This loop rides `experimental_evaluate`, an AI SDK API still marked experimental, so it can change in a patch release of `ai`. It arrived in ai 7.0.103, and a gateway model id needs 7.0.105. An older `ai` fails naming the version, the way a missing one fails naming the install.
+With `evaluationModel` set, an evaluation model answers the question as a `choice` with a calibrated distribution over the moves. It never writes text, so it types only what the instruction put in double quotes. Put every exact value there. When the task needs text it was not given and a field is on the screen, the run stops and says so. A pass the model puts below an 80% chance is looked at again rather than trusted, and a run that ends on such a pass fails saying so.
 
-## The tools a language model gets
+A choice question holds 255 options, so on a screen with more controls than that the moves past the limit are left out and the state says how many. The same move on the same screen three times ends the run, except a wait, which may repeat until the budget ends.
 
-Ten commands, all of them agent-device's own, with their upstream descriptions.
+This path rides `experimental_evaluate`, an AI SDK API still marked experimental, so it can change in a patch release of `ai`. It arrived in ai 7.0.103, and a gateway model id needs 7.0.105. An older `ai` fails naming the version, the way a missing one fails naming the install.
 
-| tool       | what it does                                  |
-| ---------- | --------------------------------------------- |
-| `snapshot` | read the accessibility tree                   |
-| `press`    | tap a node                                    |
-| `fill`     | replace a field's text                        |
-| `type`     | type into whatever holds focus                |
-| `scroll`   | scroll the screen                             |
-| `back`     | go back                                       |
-| `wait`     | wait for a node or for the screen to go quiet |
-| `get`      | read a value off the screen                   |
-| `is`       | check a predicate against the screen          |
-| `alert`    | answer a system alert                         |
+### On a language model
 
-`open`, `close`, and `screenshot` are not among them, because the session is the test's rather than the model's. Every key that names a device, a daemon, or a workspace is cut from each tool's input schema before the model sees it, so a command can only reach the device this worker opened. The one addressing key that survives is `target` on `press`, `fill`, and `get`, the ref from the model's last snapshot.
-
-What comes back is trimmed too. The snapshot the model reads is the compact listing a failure message prints, one node per line, rather than the driver's node JSON. Every other command answers with its outcome. A `press` reports what it pressed and whether the screen settled, and drops the settle diff, the evidence paths, and the cost breakdown. On the captures in this repo the listing is three to seven times smaller than the JSON, which is what keeps a long instruction inside its step budget.
+With `aiModel` set and no evaluation model, a language model answers the same question as structured output, the id of one move. It gets one move an evaluation model never does, a fill whose text it writes itself, so an instruction can leave the exact words to it. It reports no probability, so a pass is taken as it is. With both keys set, the evaluation model drives and `extract` keeps the language model.
 
 ## Credentials
 
-The examples on this page use the sample app's fake account. Do not hand a real credential to `act`. The instruction goes to the model, and the value the model types back is printed in the step it ran, in the transcript attached to the test, and in the model provider's own logs.
+The examples on this page use the sample app's fake account. Do not hand a real credential to `act`. The instruction goes to the model and shows in the `act` step title, and a value typed into a plain field is printed in the step that typed it and in the transcript attached to the test. A secure field's text is hidden in both. The model provider sees the instruction either way.
 
 Sign in deterministically and let `act` take over afterwards.
 
@@ -201,26 +184,21 @@ Any schema the AI SDK accepts works, so Zod, Valibot, and a plain JSON schema ar
 
 ## What the report shows
 
-`act` is one step, and every command the model ran is a step nested under it. A `fill` or a `type` puts the text in a nested step of its own, the way a deterministic fill does. On an evaluation model the nested steps are the moves, and the last line is the verdict with the model's chance behind it.
+`act` is one step, and every move the model picked is a step nested under it. A `fill` puts the text in a nested step of its own, the way a deterministic fill does, and hides it for a secure field. The last line is the verdict, with the model's chance behind it when it reported one.
 
 ```
-act "Sign in with the email rob@example.com"
-  snapshot
-  press @e12
-  fill @e4
-    type "rob@example.com"
-  snapshot
-  press @e9
 act "Sign in with "rob@example.com" and "hunter2". Verify the home screen shows the account's email."
   tap Sign in
   fill Email
     type "rob@example.com"
+  fill Password
+    type 7 characters
   tap Continue
   jev-latest: passed (95% chance)
 extract "Is a user signed in?"
 ```
 
-Each `act` also attaches `ai-act-1.json` to the test. On a language model it holds every tool call with its input, each result truncated to 2 KB, each errored call with its error message, the model's text, and the token usage for the run. On an evaluation model it holds each move the model picked with its chance and latency, the outcome, and the token usage. Read it when a loop did something surprising.
+Each `act` attaches `ai-act-1.json` to the test. It holds each move the model picked with its chance and latency, the outcome, the model, and the token usage summed over the run. It is attached on every exit, so a failed run is readable too.
 
 ## Test timeouts
 

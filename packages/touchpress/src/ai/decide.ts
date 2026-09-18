@@ -12,9 +12,10 @@ import {
   type ScreenNode,
 } from '../core/screen.ts';
 import { failureOf, sleep, type SessionDevice } from '../core/session.ts';
-import { timedOut } from './act.ts';
-import type { AiEvaluationModel } from './options.ts';
-import { loadAi } from './tools.ts';
+import { languageModel, timedOut } from './extract.ts';
+import type { Driver } from './device.ts';
+import type { AiEvaluationModel, AiModel } from './options.ts';
+import { loadAi } from './sdk.ts';
 
 /** The most options a choice question takes. Jev's limit, and generous for one screen. */
 const MOVE_LIMIT = 255;
@@ -29,7 +30,7 @@ const REPEAT_LIMIT = 3;
 const MIN_PASS_CHANCE = 0.8;
 
 export type DecideRun = {
-  readonly model: AiEvaluationModel;
+  readonly driver: Driver;
   readonly device: SessionDevice;
   readonly sink: ActionSink;
   readonly instruction: string;
@@ -60,7 +61,9 @@ type Move =
       readonly node: ScreenNode;
       readonly label: string;
       readonly text: string;
-    };
+    }
+  /** A fill whose text the model writes in its answer. Offered to a language model only. */
+  | { readonly kind: 'compose'; readonly node: ScreenNode; readonly label: string };
 
 /** `shown` is what the report and the transcript print. It hides the text of a secure fill, which `description` cannot, because the model must know which text it is choosing. */
 type Offered = {
@@ -138,6 +141,7 @@ export type OfferedMoves = {
 export function offeredMoves(
   screen: Screen,
   inputs: Readonly<Record<string, string>>,
+  composes = false,
 ): OfferedMoves {
   const controls: Offered[] = [];
   const next = (): string => `m${String(VERDICTS.length + controls.length)}`;
@@ -157,6 +161,15 @@ export function offeredMoves(
           `Focus ${node.role} ${JSON.stringify(label)} at ${node.ref}.`,
         ),
       );
+      if (composes) {
+        controls.push(
+          fixed(
+            next(),
+            { kind: 'compose', node, label },
+            `Fill ${node.role} ${JSON.stringify(label)} with text you write. Put that text in the answer's text field.`,
+          ),
+        );
+      }
       for (const text of Object.values(inputs)) {
         const secret = node.role === 'secure-text-field';
         controls.push({
@@ -283,9 +296,20 @@ type SdkEvaluate = (call: {
 type Decision = {
   readonly offered: Offered;
   readonly chance: number | null;
-  readonly usage: SdkResult['usage'];
+  /** What a language model wrote for a compose move. Null for every other move and driver. */
+  readonly text: string | null;
+  readonly usage: TokenUsage;
   readonly latencyMs: number;
 };
+
+/** The two SDK calls report tokens differently. A count, or an object whose `total` is the count. */
+type TokenCount = number | { readonly total?: number } | undefined;
+type TokenUsage = { readonly inputTokens?: TokenCount; readonly outputTokens?: TokenCount };
+
+type Answer = { readonly move: string; readonly text?: string };
+
+const LANGUAGE_ADDENDUM =
+  ' Answer with the id of one move. For a move that asks for text you write, put the text in the text field and nothing in it otherwise.';
 
 type Outcome = 'pass' | 'fail' | 'incomplete' | 'need-input' | 'steps' | 'repeat' | 'hedged';
 
@@ -321,7 +345,7 @@ export function runDecideAct(run: DecideRun): Promise<string> {
       try {
         for (let step = 1; step <= Math.max(1, run.maxSteps); step += 1) {
           if (Date.now() >= deadline) throw outOfTime(run, screen);
-          const { offered, dropped } = offeredMoves(screen, inputs);
+          const { offered, dropped } = offeredMoves(screen, inputs, run.driver.kind === 'language');
           const state: DecideState = {
             task: run.instruction,
             platform: run.platform,
@@ -345,13 +369,13 @@ export function runDecideAct(run: DecideRun): Promise<string> {
             if (decision.chance === null || decision.chance >= MIN_PASS_CHANCE) {
               outcome = 'pass';
               await run.sink.step(
-                `${modelName(run.model)}: passed${said}`,
+                `${modelName(run.driver.model)}: passed${said}`,
                 () => Promise.resolve(),
                 {
                   box: true,
                 },
               );
-              return `${modelName(run.model)} judged the instruction satisfied${said}`;
+              return `${modelName(run.driver.model)} judged the instruction satisfied${said}`;
             }
             // A hedged pass is looked at again rather than trusted, the way a wait is.
             hedged = decision.chance;
@@ -388,7 +412,7 @@ export function runDecideAct(run: DecideRun): Promise<string> {
             }
           }
 
-          await perform(run, screen, move);
+          await perform(run, screen, move, decision.text);
           previousScreen = state.screen;
           previousMove = decision.offered.description;
           screen = await run.device.capture();
@@ -412,7 +436,13 @@ export function runDecideAct(run: DecideRun): Promise<string> {
           name: `ai-act-${String(run.attempt)}.json`,
           contentType: 'application/json',
           body: JSON.stringify(
-            { instruction: run.instruction, model: modelName(run.model), outcome, steps, usage },
+            {
+              instruction: run.instruction,
+              model: modelName(run.driver.model),
+              outcome,
+              steps,
+              usage,
+            },
             null,
             2,
           ),
@@ -422,10 +452,15 @@ export function runDecideAct(run: DecideRun): Promise<string> {
   );
 }
 
-function add(total: Usage, poll: SdkResult['usage']): Usage {
-  const inputTokens = total.inputTokens + (poll.inputTokens ?? 0);
-  const outputTokens = total.outputTokens + (poll.outputTokens ?? 0);
+function add(total: Usage, poll: TokenUsage): Usage {
+  const inputTokens = total.inputTokens + count(poll.inputTokens);
+  const outputTokens = total.outputTokens + count(poll.outputTokens);
   return { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens };
+}
+
+function count(tokens: TokenCount): number {
+  if (typeof tokens === 'number') return tokens;
+  return tokens?.total ?? 0;
 }
 
 async function decide(
@@ -435,34 +470,91 @@ async function decide(
   deadline: number,
   screen: Screen,
 ): Promise<Decision> {
-  const evaluate = await loadEvaluate();
   const started = Date.now();
-  const result = await evaluate({
-    model: run.model as Experimental_EvaluationModel,
-    state,
-    questions: {
-      next: {
-        type: 'choice',
-        instructions: INSTRUCTIONS,
-        criteria: Object.fromEntries(offered.map((one) => [one.id, one.description])),
-      },
-    },
-    abortSignal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
-  }).catch((error: unknown) => {
+  const abortSignal = AbortSignal.timeout(Math.max(1, deadline - Date.now()));
+  const criteria = Object.fromEntries(offered.map((one) => [one.id, one.description]));
+  const answered = (
+    run.driver.kind === 'evaluation'
+      ? evaluationAnswer(run.driver.model, state, criteria, abortSignal)
+      : languageAnswer(run.driver.model, state, criteria, abortSignal)
+  ).catch((error: unknown) => {
     if (!timedOut(error)) throw error;
     throw outOfTime(run, screen);
   });
-  const answer = result.answers.next;
-  // The SDK has already rejected a choice outside the criteria, so this only narrows the type.
-  const chosen = offered.find((one) => one.id === answer.choice);
-  if (chosen === undefined)
-    throw new Error(`the model chose "${answer.choice}", which was not offered`);
+  const { answer, chance, usage } = await answered;
+  const chosen = offered.find((one) => one.id === answer.move);
+  if (chosen === undefined) {
+    // An evaluation answer is checked by the SDK, and a language answer by its schema, so this only narrows.
+    throw new Error(`the model chose "${answer.move}", which was not offered`);
+  }
   return {
     offered: chosen,
-    chance: answer.probabilities?.[answer.choice] ?? null,
-    usage: result.usage,
+    chance,
+    text: chosen.move.kind === 'compose' ? (answer.text ?? null) : null,
+    usage,
     latencyMs: Date.now() - started,
   };
+}
+
+type Answered = {
+  readonly answer: Answer;
+  readonly chance: number | null;
+  readonly usage: TokenUsage;
+};
+
+async function evaluationAnswer(
+  model: AiEvaluationModel,
+  state: DecideState,
+  criteria: Record<string, string>,
+  abortSignal: AbortSignal,
+): Promise<Answered> {
+  const evaluate = await loadEvaluate();
+  const result = await evaluate({
+    model: model as Experimental_EvaluationModel,
+    state,
+    questions: { next: { type: 'choice', instructions: INSTRUCTIONS, criteria } },
+    abortSignal,
+  });
+  const answer = result.answers.next;
+  return {
+    answer: { move: answer.choice },
+    chance: answer.probabilities?.[answer.choice] ?? null,
+    usage: result.usage,
+  };
+}
+
+/**
+ * The same question put to a language model. The moves ride in the prompt and
+ * the answer is one structured object, so the model spends its output on an id
+ * and, for a compose move, the text, rather than on a tool call per step.
+ */
+async function languageAnswer(
+  model: AiModel,
+  state: DecideState,
+  criteria: Record<string, string>,
+  abortSignal: AbortSignal,
+): Promise<Answered> {
+  const { ToolLoopAgent, Output, jsonSchema } = await loadAi();
+  const agent = new ToolLoopAgent({
+    model: languageModel(model),
+    instructions: INSTRUCTIONS + LANGUAGE_ADDENDUM,
+    output: Output.object({
+      schema: jsonSchema<Answer>({
+        type: 'object',
+        properties: {
+          move: { type: 'string', enum: Object.keys(criteria), description: 'The id of the move.' },
+          text: { type: 'string', description: 'Only for a move that asks for text you write.' },
+        },
+        required: ['move'],
+        additionalProperties: false,
+      }),
+    }),
+  });
+  const result = await agent.generate({
+    prompt: JSON.stringify({ ...state, moves: criteria }, null, 1),
+    abortSignal,
+  });
+  return { answer: result.output, chance: null, usage: result.usage };
 }
 
 function outOfTime(run: DecideRun, screen: Screen): TouchpressError {
@@ -486,9 +578,21 @@ async function perform(
   run: DecideRun,
   screen: Screen,
   move: Exclude<Move, { kind: 'verdict' | 'need-input' }>,
+  composed: string | null,
 ): Promise<void> {
   const budget = run.actionTimeout;
   switch (move.kind) {
+    case 'compose':
+      if (composed === null || composed === '') {
+        throw new TouchpressError({
+          kind: 'ai-blocked',
+          instruction: run.instruction,
+          summary: 'the model chose to write the text for a field and wrote none',
+          screen: renderScreen(screen),
+        });
+      }
+      await fill(run, screen, move.node, move.label, composed);
+      return;
     case 'tap':
       await run.sink.step(
         renderTitle({ kind: 'tool', name: 'tap', target: move.label }),
@@ -506,28 +610,7 @@ async function perform(
       );
       return;
     case 'fill':
-      await run.sink.step(
-        renderTitle({ kind: 'tool', name: 'fill', target: move.label }),
-        async () => {
-          await run.sink.step(
-            renderTitle({
-              kind: 'typed',
-              typed:
-                move.node.role === 'secure-text-field'
-                  ? { kind: 'hidden', length: move.text.length }
-                  : { kind: 'text', value: move.text },
-            }),
-            () => Promise.resolve(),
-            { box: true },
-          );
-          try {
-            await run.device.fill(pin(screen, move.node), move.text, budget);
-          } catch (error) {
-            // A covered field is the target itself, so only a stale ref is left to the next capture.
-            if (failureOf(error)?.kind !== 'stale-ref') throw error;
-          }
-        },
-      );
+      await fill(run, screen, move.node, move.label, move.text);
       return;
     case 'scroll':
       await run.sink.step(
@@ -547,8 +630,36 @@ async function perform(
   }
 }
 
+async function fill(
+  run: DecideRun,
+  screen: Screen,
+  node: ScreenNode,
+  label: string,
+  text: string,
+): Promise<void> {
+  await run.sink.step(renderTitle({ kind: 'tool', name: 'fill', target: label }), async () => {
+    await run.sink.step(
+      renderTitle({
+        kind: 'typed',
+        typed:
+          node.role === 'secure-text-field'
+            ? { kind: 'hidden', length: text.length }
+            : { kind: 'text', value: text },
+      }),
+      () => Promise.resolve(),
+      { box: true },
+    );
+    try {
+      await run.device.fill(pin(screen, node), text, run.actionTimeout);
+    } catch (error) {
+      // A covered field is the target itself, so only a stale ref is left to the next capture.
+      if (failureOf(error)?.kind !== 'stale-ref') throw error;
+    }
+  });
+}
+
 /** A gateway id already reads as a name, and an instance carries its own. */
-export function modelName(model: AiEvaluationModel): string {
+export function modelName(model: AiEvaluationModel | AiModel): string {
   return typeof model === 'string' ? model : model.modelId;
 }
 
