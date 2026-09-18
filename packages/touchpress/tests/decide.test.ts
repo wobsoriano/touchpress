@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vite-plus/test';
-import { Experimental_EvaluationMockModelV4 } from 'ai/test';
+import { Experimental_EvaluationMockModelV4, MockLanguageModelV4 } from 'ai/test';
 import { withAi, type AiDevice } from '../src/ai/device.ts';
 import { offeredMoves, quotedInputs, screenState } from '../src/ai/decide.ts';
 import type { Device } from '../src/core/device.ts';
@@ -110,9 +110,62 @@ function aiDevice(
   screens: readonly Screen[],
   performed: Performed[] = [],
   sink = createRecordingSink(),
+  language?: MockLanguageModelV4,
 ): Device & AiDevice {
-  return withAi({} as Device, fakeSession(screens, performed), sink, undefined, model);
+  return withAi({} as Device, fakeSession(screens, performed), sink, language, model);
 }
+
+/** Derived from the mock's own constructor, so the provider spec is never restated here. */
+type Script = NonNullable<
+  NonNullable<ConstructorParameters<typeof MockLanguageModelV4>[0]>['doGenerate']
+>;
+type Turn = Extract<Script, readonly unknown[]>[number];
+type CallOptions = Parameters<Extract<Script, (...args: never[]) => unknown>>[0];
+
+/**
+ * A language model that answers the same way `scripted` does, by picking a move from the
+ * descriptions in its prompt. It reads them off the `moves` map the prompt carries.
+ */
+function spoken(
+  picks: readonly (Pick | { pick: Pick; text: string })[],
+  prompts: string[] = [],
+): MockLanguageModelV4 {
+  return new MockLanguageModelV4({
+    modelId: 'mock-haiku',
+    doGenerate: (options: CallOptions): Promise<Turn> => {
+      const user = [...options.prompt].reverse().find((message) => message.role === 'user');
+      const part =
+        user === undefined ? undefined : (user.content as { type: string; text?: string }[])[0];
+      const prompt = part?.text ?? '';
+      prompts.push(prompt);
+      const moves = (JSON.parse(prompt) as { moves: Record<string, string> }).moves;
+      const entry = picks[Math.min(prompts.length - 1, picks.length - 1)];
+      const pick = typeof entry === 'function' ? entry : entry?.pick;
+      const id = Object.keys(moves).find((one) => pick?.(moves[one] ?? '') === true);
+      if (id === undefined) throw new Error('no offered move matched');
+      const text = typeof entry === 'function' ? undefined : entry?.text;
+      return Promise.resolve({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(text === undefined ? { move: id } : { move: id, text }),
+          },
+        ],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage: {
+          inputTokens: { total: 500, noCache: 500, cacheRead: 0, cacheWrite: 0 },
+          outputTokens: { total: 10, text: 10, reasoning: 0 },
+        },
+        warnings: [],
+      });
+    },
+  });
+}
+
+const composes =
+  (label: string): Pick =>
+  (d) =>
+    d.startsWith('Fill ') && d.includes(`"${label}"`) && d.includes('text you write');
 
 const login = loadScreen('ios-login');
 const home = loadScreen('home');
@@ -495,7 +548,7 @@ test("an 'ai' without experimental_evaluate names the version the evaluation mod
 
   const error = await decide
     .runDecideAct({
-      model: scripted([verdict('pass')]),
+      driver: { kind: 'evaluation', model: scripted([verdict('pass')]) },
       device: {
         capture: () => Promise.resolve(login),
       } as unknown as SessionDevice,
@@ -636,4 +689,90 @@ test('a hittable, named text is offered as a tap, since a sign-in sheet shows it
   expect(descriptions).toContain('Tap text "Enter your email" at @e1.');
   expect(descriptions.some((one) => one.includes('Welcome!'))).toBe(false);
   expect(descriptions.some((one) => one.includes('"or"'))).toBe(false);
+});
+
+test('a language model drives the same loop through structured output and may write the text it types', async () => {
+  const performed: Performed[] = [];
+  const prompts: string[] = [];
+  const sink = createRecordingSink();
+  const device = aiDevice(
+    undefined,
+    [login, login, home],
+    performed,
+    sink,
+    spoken(
+      [{ pick: composes('email'), text: 'rob@example.com' }, taps('Continue'), verdict('pass')],
+      prompts,
+    ),
+  );
+
+  const summary = await device.act('Sign in with my usual email and verify the home screen shows');
+
+  expect(summary).toBe('mock-haiku judged the instruction satisfied');
+  expect(
+    performed.map((one) => ({ ...one, ref: 'ref' in one ? one.ref.replace(/~s\d+$/, '') : '' })),
+  ).toEqual([
+    { kind: 'fill', ref: '@e6', text: 'rob@example.com' },
+    { kind: 'tap', ref: '@e8' },
+  ]);
+  expect(JSON.parse(prompts[0] ?? '{}') as object).toMatchObject({
+    task: expect.stringContaining('Sign in') as unknown,
+  });
+  expect(sink.steps.map((one) => one.title)).toEqual([
+    'act "Sign in with my usual email and verify the home screen shows"',
+    'fill email',
+    'type "rob@example.com"',
+    'tap Continue',
+    'mock-haiku: passed',
+  ]);
+  const file = sink.attachments[0];
+  const attached = JSON.parse(file !== undefined && 'body' in file ? file.body : '{}') as {
+    usage: unknown;
+    model: string;
+  };
+  expect(attached.model).toBe('mock-haiku');
+  expect(attached.usage, 'nested SDK usage is summed by its totals').toEqual({
+    inputTokens: 1500,
+    outputTokens: 30,
+    totalTokens: 1530,
+  });
+});
+
+test('the compose move is offered to a language model only', () => {
+  const language = offeredMoves(login, {}, true).offered.map((one) => one.description);
+  const evaluation = offeredMoves(login, {}, false).offered.map((one) => one.description);
+
+  expect(language.some((one) => one.includes('text you write'))).toBe(true);
+  expect(evaluation.some((one) => one.includes('text you write'))).toBe(false);
+});
+
+test('a compose move with no text is refused rather than typed as nothing', async () => {
+  const device = aiDevice(
+    undefined,
+    [login],
+    [],
+    createRecordingSink(),
+    spoken([composes('email')]),
+  );
+
+  await expect(device.act('Sign in')).rejects.toMatchObject({
+    info: { kind: 'ai-blocked', summary: expect.stringContaining('wrote none') as unknown },
+  });
+});
+
+test('with both models set, the evaluation model drives act', async () => {
+  const prompts: string[] = [];
+  const calls: Call[] = [];
+  const device = aiDevice(
+    scripted([verdict('pass')], calls),
+    [login],
+    [],
+    createRecordingSink(),
+    spoken([verdict('pass')], prompts),
+  );
+
+  await device.act('Look');
+
+  expect(calls).toHaveLength(1);
+  expect(prompts).toHaveLength(0);
 });
