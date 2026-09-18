@@ -111,6 +111,7 @@ const VERDICTS: readonly Offered[] = [
 ];
 
 const FIELD_ROLES = new Set(['text-field', 'secure-text-field']);
+const TAPPABLE_WHEN_HITTABLE = new Set(['other', 'text']);
 
 const INSTRUCTIONS = [
   'Choose the next move that carries out the user task in the app. Compare screen with previousScreen and previousMove to see what changed. On the first step both are null.',
@@ -167,8 +168,9 @@ export function offeredMoves(
       }
     } else if (
       INTERACTIVE_ROLES.has(node.role) ||
-      // A named container the driver calls hittable is usually a row or a card, which a tap opens.
-      (node.role === 'other' && node.hittable === true && node.name !== null)
+      // A named container or text the driver calls hittable is a row, a card, or a pressable label,
+      // such as the "Enter your email" text a sign-in sheet shows before its field exists.
+      (TAPPABLE_WHEN_HITTABLE.has(node.role) && node.hittable === true && node.name !== null)
     ) {
       const label = node.name ?? node.testId ?? node.ref;
       controls.push(

@@ -603,3 +603,37 @@ test('need_input is offered only on a screen with a field to type into', () => {
     'scroll_right',
   ]);
 });
+
+test('a hittable, named text is offered as a tap, since a sign-in sheet shows its field as one before it exists', () => {
+  const sheet = parseScreen(
+    {
+      nodes: [
+        {
+          ref: 'e1',
+          index: 0,
+          type: 'StaticText',
+          label: 'Enter your email',
+          identifier: 'clerk.auth.start.identifier',
+          enabled: true,
+          hittable: true,
+        },
+        {
+          ref: 'e2',
+          index: 1,
+          type: 'StaticText',
+          label: 'Welcome! Sign in to continue',
+          enabled: true,
+          hittable: false,
+        },
+        { ref: 'e3', index: 2, type: 'StaticText', label: 'or', enabled: true },
+      ],
+    },
+    'ios',
+  );
+
+  const descriptions = offeredMoves(sheet, {}).offered.map((one) => one.description);
+
+  expect(descriptions).toContain('Tap text "Enter your email" at @e1.');
+  expect(descriptions.some((one) => one.includes('Welcome!'))).toBe(false);
+  expect(descriptions.some((one) => one.includes('"or"'))).toBe(false);
+});
