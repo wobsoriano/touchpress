@@ -22,7 +22,6 @@ test('open sign in with AI', async ({ device }) => {
   test.setTimeout(180_000);
   await device.act('Open the sign-in screen');
   await expect(device.getByTestId('login')).toBeVisible();
-  await expect(device).toBeJudged('The screen asks for an email and a password');
 });
 ```
 

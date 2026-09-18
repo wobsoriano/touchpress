@@ -12,7 +12,6 @@ import type { Device as CoreDevice } from './core/device.ts';
 export { setupTest, test } from './playwright/fixtures.ts';
 
 export { expect } from './playwright/expect.ts';
-export type { JudgedOptions } from './playwright/judged.ts';
 export type { ScreenshotOptions } from './playwright/screenshot.ts';
 
 export { TouchpressError } from './core/errors.ts';
@@ -30,17 +29,7 @@ export type TouchpressOptions = CoreOptions & AiOptions;
 export type Device = CoreDevice & AiDevice;
 
 export type { AiEvaluationModel, AiModel, AiOptions } from './ai/options.ts';
-export type {
-  ActOptions,
-  AiDevice,
-  ChanceJudgment,
-  ChoiceJudgment,
-  ExtractOptions,
-  ExtractSchema,
-  Judgment,
-  JudgmentInput,
-  Judgments,
-} from './ai/device.ts';
+export type { ActOptions, AiDevice, ExtractOptions, ExtractSchema } from './ai/device.ts';
 
 export type { ReadyQuery } from './core/config.ts';
 export type { BackOptions, FilterOptions, Keyboard, Locator, TypeOptions } from './core/device.ts';

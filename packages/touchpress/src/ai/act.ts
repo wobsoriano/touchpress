@@ -117,6 +117,7 @@ export function runAct(run: ActRun): Promise<string> {
             kind: 'ai-timeout',
             command: 'act',
             asked: run.instruction,
+            instruction: run.instruction,
             timeoutMs: run.timeout,
             screen: await run.screen(),
           });
