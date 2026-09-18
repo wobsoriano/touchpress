@@ -88,10 +88,6 @@ export type ErrorInfo =
     }
   | {
       readonly kind: 'ai-timeout';
-      readonly command: 'act';
-      /** What the call was asked. */
-      readonly asked: string;
-      /** @deprecated Read `asked`. 0.2 carried the instruction here, and 0.3.0 dropped it without saying so. */
       readonly instruction: string;
       readonly timeoutMs: number;
       readonly screen: string;
@@ -228,7 +224,7 @@ function formatError(info: ErrorInfo): string {
       return [
         `act ran out of its ${String(info.timeoutMs)}ms budget before reaching an outcome.`,
         ``,
-        `Instruction: ${info.asked}`,
+        `Instruction: ${info.instruction}`,
         ``,
         'Raise the act timeout, and the test timeout with it.',
         ``,

@@ -13,8 +13,8 @@ const DEFAULT_EXTRACT_TIMEOUT_MS = 60_000;
 
 /**
  * A loop can run for minutes, so its budget is its own rather than the action
- * timeout a deterministic step takes. `maxSteps` counts model turns on the
- * language-model loop and moves on the evaluation-model loop.
+ * timeout a deterministic step takes. `maxSteps` counts the moves the model
+ * picks, verdicts included.
  */
 export type ActOptions = { timeout?: number; maxSteps?: number };
 export type ExtractOptions = { timeout?: number };

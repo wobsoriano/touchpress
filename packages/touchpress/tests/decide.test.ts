@@ -524,8 +524,6 @@ test('a model that never answers is an ai-timeout naming act and the instruction
   await expect(device.act('Sign in', { timeout: 30 })).rejects.toMatchObject({
     info: {
       kind: 'ai-timeout',
-      command: 'act',
-      asked: 'Sign in',
       instruction: 'Sign in',
       timeoutMs: 30,
     },

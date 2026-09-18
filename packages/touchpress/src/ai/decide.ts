@@ -314,10 +314,10 @@ const LANGUAGE_ADDENDUM =
 type Outcome = 'pass' | 'fail' | 'incomplete' | 'need-input' | 'steps' | 'repeat' | 'hedged';
 
 /**
- * Drives the app with an evaluation model. Each step captures the screen,
- * offers every move on it, and asks one choice question. The model never
- * writes text and never calls a tool, so the loop stays in this function and a
- * step costs one capture plus one call of a few hundred milliseconds.
+ * Drives the app with either kind of model. Each step captures the screen,
+ * offers every move on it, and asks one question, which move next. The model
+ * never calls a tool, so the loop stays in this function and a step costs one
+ * capture plus one model call.
  */
 export function runDecideAct(run: DecideRun): Promise<string> {
   return run.sink.step(
@@ -560,8 +560,6 @@ async function languageAnswer(
 function outOfTime(run: DecideRun, screen: Screen): TouchpressError {
   return new TouchpressError({
     kind: 'ai-timeout',
-    command: 'act',
-    asked: run.instruction,
     instruction: run.instruction,
     timeoutMs: run.timeout,
     screen: renderScreen(screen),
@@ -569,10 +567,10 @@ function outOfTime(run: DecideRun, screen: Screen): TouchpressError {
 }
 
 /**
- * One move on the device, reported the way the language-model loop reports its
- * tool calls. A tap that lands on a label covering its control is retried on
- * the control, the way a deterministic tap is. A tap or fill whose ref went
- * stale is left alone, because the loop captures again before its next move.
+ * One move on the device, reported as a step the way a deterministic action is.
+ * A tap that lands on a label covering its control is retried on the control,
+ * the way a deterministic tap is. A tap or fill whose ref went stale is left
+ * alone, because the loop captures again before its next move.
  */
 async function perform(
   run: DecideRun,
