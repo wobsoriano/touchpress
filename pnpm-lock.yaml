@@ -189,8 +189,8 @@ importers:
   packages/touchpress:
     dependencies:
       agent-device:
-        specifier: 0.21.2
-        version: 0.21.2(ai@7.0.105(zod@4.5.4))
+        specifier: 0.21.7
+        version: 0.21.7(ai@7.0.105(zod@4.5.4))
       pixelmatch:
         specifier: ^7.2.0
         version: 7.2.0
@@ -2055,8 +2055,8 @@ packages:
     engines: {node: '>=18.18'}
     hasBin: true
 
-  agent-device@0.21.2:
-    resolution: {integrity: sha512-4lN1+9inh/P2WbC+L9Lfca7xrIkm2vJg2xHessUNRtJRSocL9/BL/SbvEt5pYrO/PvpLW/Awu5Cn9IMA8cpfQA==}
+  agent-device@0.21.7:
+    resolution: {integrity: sha512-oeddlU5/Go9xzSWC1WmsqtE5iVcZjhiD1nBx2D9/YJluxZ7TWIAWllvSO+WRFJPDm67p3KpbtYUscv6KOPfceQ==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -6202,7 +6202,7 @@ snapshots:
 
   agent-cli-detector@0.1.7: {}
 
-  agent-device@0.21.2(ai@7.0.105(zod@4.5.4)):
+  agent-device@0.21.7(ai@7.0.105(zod@4.5.4)):
     optionalDependencies:
       ai: 7.0.105(zod@4.5.4)
 
