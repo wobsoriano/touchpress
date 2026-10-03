@@ -1,7 +1,7 @@
 # touchpress
 
 > [!WARNING]
-> This codebase was largely written by an LLM, supervised by a human maintainer. It is highly experimental. Use at your own risk.
+> This package is experimental and not meant for production. Use [e2e](https://tester.army/e2e) instead.
 
 touchpress runs e2e tests for mobile apps on the Playwright test runner. It drives a booted simulator or emulator through [`agent-device`](https://agent-device.dev/).
 
